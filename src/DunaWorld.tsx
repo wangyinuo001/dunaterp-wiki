@@ -444,6 +444,61 @@ function createVehicle() {
   return vehicle;
 }
 
+function createMiniDunaliella(seed: number) {
+  const mini = new THREE.Group();
+  const colors = [0x83ca4a, 0xa8d84f, 0xe6a33b, 0x70bd45];
+  const body = new THREE.Mesh(
+    new THREE.SphereGeometry(0.46, 18, 12),
+    new THREE.MeshToonMaterial({ color: colors[seed % colors.length] }),
+  );
+  body.scale.set(0.78, 1.08, 0.67);
+  body.castShadow = true;
+  mini.add(body);
+
+  const chloroplast = new THREE.Mesh(
+    new THREE.TorusGeometry(0.25, 0.1, 8, 18, Math.PI * 1.7),
+    new THREE.MeshToonMaterial({ color: 0x4c8f35 }),
+  );
+  chloroplast.rotation.x = Math.PI / 2;
+  chloroplast.position.set(0, -0.06, 0.37);
+  mini.add(chloroplast);
+
+  const eyespot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.085, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xf26a21 }),
+  );
+  eyespot.position.set(0.25, 0.16, 0.34);
+  mini.add(eyespot);
+
+  const flagellaMaterial = new THREE.MeshBasicMaterial({ color: 0xcaff61 });
+  mini.add(
+    tube(
+      [
+        new THREE.Vector3(-0.1, 0.42, 0),
+        new THREE.Vector3(-0.18, 0.77, 0.05),
+        new THREE.Vector3(-0.42, 1.12, 0.08),
+        new THREE.Vector3(-0.32, 1.48, -0.04),
+      ],
+      0.018,
+      flagellaMaterial,
+    ),
+    tube(
+      [
+        new THREE.Vector3(0.1, 0.42, 0),
+        new THREE.Vector3(0.22, 0.76, -0.04),
+        new THREE.Vector3(0.46, 1.1, -0.08),
+        new THREE.Vector3(0.35, 1.46, 0.04),
+      ],
+      0.018,
+      flagellaMaterial,
+    ),
+  );
+
+  mini.scale.setScalar(0.72 + (seed % 3) * 0.05);
+  mini.rotation.y = seed * 1.37;
+  return mini;
+}
+
 function createHelix() {
   const group = new THREE.Group();
   const blue = new THREE.MeshToonMaterial({ color: 0x66d7ef });
@@ -685,6 +740,63 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const vehicle = createVehicle();
     scene.add(vehicle);
 
+    const landingPoint = curve.getPointAt(0.001);
+    const landingRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xcaff61,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const landingRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.55, 0.82, 36),
+      landingRingMaterial,
+    );
+    landingRing.rotation.x = -Math.PI / 2;
+    landingRing.position.copy(landingPoint);
+    landingRing.position.y = 0.16;
+    landingRing.visible = false;
+    scene.add(landingRing);
+
+    const miniAlgae: Array<{
+      object: THREE.Group;
+      t: number;
+      home: THREE.Vector3;
+      velocity: THREE.Vector3;
+      angular: THREE.Vector3;
+      hit: boolean;
+    }> = [];
+    const algaeClusterPoints = [0.13, 0.34, 0.51, 0.68, 0.83];
+    let miniIndex = 0;
+    algaeClusterPoints.forEach((clusterT, clusterIndex) => {
+      for (let itemIndex = 0; itemIndex < 4; itemIndex += 1) {
+        const t = clusterT + (itemIndex - 1.5) * 0.004;
+        const point = curve.getPointAt(t);
+        const tangent = curve.getTangentAt(t).normalize();
+        const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
+        const offset = (itemIndex - 1.5) * 0.72 + Math.sin((miniIndex + 1) * 3.17) * 0.16;
+        const object = createMiniDunaliella(miniIndex);
+        object.position.copy(point).addScaledVector(side, offset);
+        object.position.y = 0.52;
+        object.rotation.y = Math.atan2(tangent.x, tangent.z) + clusterIndex * 0.45;
+        scene.add(object);
+        miniAlgae.push({
+          object,
+          t,
+          home: object.position.clone(),
+          velocity: new THREE.Vector3(),
+          angular: new THREE.Vector3(),
+          hit: false,
+        });
+        miniIndex += 1;
+      }
+    });
+
+    const impactBursts: Array<{
+      mesh: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+      life: number;
+    }> = [];
+
     const roadSigns: Array<{ t: number; object: THREE.Group }> = [];
     chapters.forEach((chapter, index) => {
       const sign = createRoadSign(chapter);
@@ -807,12 +919,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
     let targetProgress = 0.001;
     let currentProgress = 0.001;
+    let previousProgress = currentProgress;
     let disposed = false;
     let frameCount = 0;
     const cameraTarget = new THREE.Vector3();
     const cameraPosition = new THREE.Vector3();
     const travelTarget = new THREE.Vector3();
     const travelCamera = new THREE.Vector3();
+    const vehicleGroundPosition = new THREE.Vector3();
     const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 3.35, 0));
     const terminalCamera = terminal.position
       .clone()
@@ -844,15 +958,38 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.04);
       currentProgress = THREE.MathUtils.damp(currentProgress, targetProgress, 7, delta);
+      const progressVelocity = (currentProgress - previousProgress) / Math.max(delta, 0.001);
+      previousProgress = currentProgress;
 
       const point = curve.getPointAt(currentProgress);
       const tangent = curve.getTangentAt(currentProgress).normalize();
       const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
       const routeSway = Math.sin(currentProgress * Math.PI * 7) * 0.12;
-      vehicle.position.copy(point).addScaledVector(side, routeSway);
-      vehicle.position.y = 0.12;
+      vehicleGroundPosition.copy(point).addScaledVector(side, routeSway);
+      vehicle.position.copy(vehicleGroundPosition);
+
+      const introTime = clock.elapsedTime;
+      let dropHeight = 0;
+      if (introTime < 0.78) {
+        const dropProgress = introTime / 0.78;
+        dropHeight = 11 * (1 - dropProgress * dropProgress);
+      } else if (introTime < 2.1) {
+        const bounceTime = introTime - 0.78;
+        dropHeight = Math.abs(Math.sin(bounceTime * 7.6)) * 2.35 * Math.exp(-bounceTime * 2.45);
+      }
+      vehicle.position.y = 0.12 + dropHeight;
       vehicle.rotation.y = Math.atan2(tangent.x, tangent.z);
-      vehicle.rotation.z = Math.sin(currentProgress * Math.PI * 14) * -0.035;
+      vehicle.rotation.x = -0.22 * Math.exp(-introTime * 1.7) * Math.cos(introTime * 5.5);
+      vehicle.rotation.z = Math.sin(currentProgress * Math.PI * 14) * -0.035
+        + 0.18 * Math.exp(-introTime * 1.8) * Math.sin(introTime * 6.4);
+
+      const landingLife = (introTime - 0.7) / 1.05;
+      landingRing.visible = landingLife >= 0 && landingLife <= 1;
+      if (landingRing.visible) {
+        const landingScale = 1 + landingLife * 5.2;
+        landingRing.scale.setScalar(landingScale);
+        landingRingMaterial.opacity = (1 - landingLife) * 0.82;
+      }
 
       let closestSignIndex = 0;
       let closestSignDistance = Number.POSITIVE_INFINITY;
@@ -867,6 +1004,86 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         sign.object.visible = currentProgress < 0.925 && index === closestSignIndex && closestSignDistance < 0.13;
       });
 
+      miniAlgae.forEach((actor, actorIndex) => {
+        if (currentProgress < 0.025 && actor.hit) {
+          actor.hit = false;
+          actor.object.position.copy(actor.home);
+          actor.velocity.set(0, 0, 0);
+          actor.angular.set(0, 0, 0);
+        }
+
+        if (!actor.hit) {
+          actor.object.position.y = actor.home.y + Math.sin(introTime * 2.4 + actorIndex * 0.83) * 0.055;
+          actor.object.rotation.y += delta * (0.35 + (actorIndex % 3) * 0.12);
+
+          const separation = actor.object.position.clone().sub(vehicleGroundPosition);
+          separation.y = 0;
+          if (Math.abs(currentProgress - actor.t) < 0.022 && separation.length() < 1.55) {
+            actor.hit = true;
+            const pushDirection = separation.lengthSq() > 0.01
+              ? separation.normalize()
+              : side.clone().multiplyScalar(actorIndex % 2 === 0 ? -1 : 1);
+            const impactStrength = 3.1 + Math.min(3.5, Math.abs(progressVelocity) * 32);
+            actor.velocity
+              .copy(pushDirection)
+              .multiplyScalar(impactStrength)
+              .addScaledVector(tangent, Math.sign(progressVelocity || 1) * 1.8);
+            actor.velocity.y = 3.4 + (actorIndex % 4) * 0.42;
+            actor.angular.set(
+              3.2 + (actorIndex % 3),
+              (actorIndex % 2 === 0 ? -1 : 1) * (4.1 + (actorIndex % 4)),
+              2.6 + (actorIndex % 5) * 0.55,
+            );
+
+            const burstMaterial = new THREE.MeshBasicMaterial({
+              color: actorIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
+              transparent: true,
+              opacity: 0.9,
+              side: THREE.DoubleSide,
+              depthWrite: false,
+            });
+            const burst = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.34, 24), burstMaterial);
+            burst.rotation.x = -Math.PI / 2;
+            burst.position.copy(actor.object.position);
+            burst.position.y = 0.18;
+            scene.add(burst);
+            impactBursts.push({ mesh: burst, life: 0 });
+          }
+        } else {
+          actor.velocity.y -= 9.4 * delta;
+          const planarDamping = Math.exp(-1.05 * delta);
+          actor.velocity.x *= planarDamping;
+          actor.velocity.z *= planarDamping;
+          actor.object.position.addScaledVector(actor.velocity, delta);
+          actor.object.rotation.x += actor.angular.x * delta;
+          actor.object.rotation.y += actor.angular.y * delta;
+          actor.object.rotation.z += actor.angular.z * delta;
+          actor.angular.multiplyScalar(Math.exp(-0.72 * delta));
+
+          if (actor.object.position.y < 0.48) {
+            actor.object.position.y = 0.48;
+            if (actor.velocity.y < -0.45) actor.velocity.y *= -0.43;
+            else actor.velocity.y = 0;
+            actor.velocity.x *= 0.74;
+            actor.velocity.z *= 0.74;
+          }
+        }
+      });
+
+      for (let burstIndex = impactBursts.length - 1; burstIndex >= 0; burstIndex -= 1) {
+        const burst = impactBursts[burstIndex];
+        burst.life += delta;
+        const burstProgress = burst.life / 0.62;
+        burst.mesh.scale.setScalar(1 + burstProgress * 5.5);
+        burst.mesh.material.opacity = Math.max(0, 1 - burstProgress) * 0.9;
+        if (burstProgress >= 1) {
+          scene.remove(burst.mesh);
+          burst.mesh.geometry.dispose();
+          burst.mesh.material.dispose();
+          impactBursts.splice(burstIndex, 1);
+        }
+      }
+
       const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.995);
       const shotPhase = currentProgress * Math.PI * 4;
       const sideOffset = 4.2 + Math.sin(shotPhase) * 1.45;
@@ -874,10 +1091,10 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const cameraLead = 12.4 + Math.sin(shotPhase * 0.55) * 1.25;
       const cellReveal = THREE.MathUtils.smoothstep(currentProgress, 0.17, 0.23)
         * (1 - THREE.MathUtils.smoothstep(currentProgress, 0.3, 0.36));
-      travelTarget.copy(vehicle.position).addScaledVector(tangent, -2.8);
+      travelTarget.copy(vehicleGroundPosition).addScaledVector(tangent, -2.8);
       travelTarget.lerp(cell.position, cellReveal * 0.3);
       travelCamera
-        .copy(vehicle.position)
+        .copy(vehicleGroundPosition)
         .addScaledVector(tangent, cameraLead)
         .addScaledVector(side, sideOffset)
         .add(new THREE.Vector3(0, cameraHeight, 0));
