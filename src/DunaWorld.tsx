@@ -524,6 +524,226 @@ function createHelix() {
   return group;
 }
 
+function createSaltworksOutpost() {
+  const group = new THREE.Group();
+  const saltMaterial = new THREE.MeshToonMaterial({ color: 0xfff8df });
+  const darkMaterial = new THREE.MeshToonMaterial({ color: 0x17463e });
+  const brineMaterial = new THREE.MeshToonMaterial({ color: 0xe7a3a8 });
+
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.25, 4.8), saltMaterial);
+  platform.position.y = 0.12;
+  platform.receiveShadow = true;
+  group.add(platform);
+
+  [
+    [-1.8, 0.8, -0.8, 1.5, 1.4, 1.7],
+    [0.1, 1.15, -0.65, 1.8, 2.1, 1.9],
+    [2.1, 0.65, -0.4, 1.25, 1.1, 1.4],
+  ].forEach(([x, y, z, width, height, depth]) => {
+    const building = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), saltMaterial);
+    building.position.set(x, y, z);
+    building.castShadow = true;
+    group.add(building);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(width * 0.7, 0.65, 4), darkMaterial);
+    roof.rotation.y = Math.PI / 4;
+    roof.position.set(x, y + height / 2 + 0.3, z);
+    group.add(roof);
+  });
+
+  [-1.7, 0, 1.7].forEach((x) => {
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 0.12, 28), brineMaterial);
+    basin.position.set(x, 0.3, 1.45);
+    group.add(basin);
+  });
+  return group;
+}
+
+function createPhotobioreactorStation() {
+  const group = new THREE.Group();
+  const frameMaterial = new THREE.MeshToonMaterial({ color: 0x0b3a34 });
+  const glassMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xcaf9e9,
+    transparent: true,
+    opacity: 0.34,
+    roughness: 0.1,
+    transmission: 0.28,
+  });
+  const cultureMaterial = new THREE.MeshToonMaterial({ color: 0x82c94a, transparent: true, opacity: 0.78 });
+
+  [-1.65, 0, 1.65].forEach((x, index) => {
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.68, 3.7, 24), glassMaterial);
+    tank.position.set(x, 2.05, 0);
+    tank.castShadow = true;
+    group.add(tank);
+    const culture = new THREE.Mesh(new THREE.CylinderGeometry(0.57, 0.57, 2.75, 24), cultureMaterial);
+    culture.position.set(x, 1.6, 0);
+    group.add(culture);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.77, 0.77, 0.18, 20), frameMaterial);
+    cap.position.set(x, 4, 0);
+    group.add(cap);
+    const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0xf7f1df });
+    for (let bubbleIndex = 0; bubbleIndex < 4; bubbleIndex += 1) {
+      const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), bubbleMaterial);
+      bubble.position.set(
+        x + Math.sin(index * 4 + bubbleIndex) * 0.28,
+        0.65 + bubbleIndex * 0.68,
+        0.42,
+      );
+      group.add(bubble);
+    }
+  });
+
+  const pipe = tube(
+    [
+      new THREE.Vector3(-1.65, 4.05, 0),
+      new THREE.Vector3(-1.65, 4.55, 0),
+      new THREE.Vector3(1.65, 4.55, 0),
+      new THREE.Vector3(1.65, 4.05, 0),
+    ],
+    0.1,
+    frameMaterial,
+  );
+  group.add(pipe);
+  return group;
+}
+
+function createLightArray() {
+  const group = new THREE.Group();
+  const postMaterial = new THREE.MeshToonMaterial({ color: 0x173f3a });
+  const lightColors = [0xff8b72, 0x7de2ff, 0xf8cb54, 0xc4a8ff];
+  lightColors.forEach((color, index) => {
+    const x = (index - 1.5) * 1.55;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 3.2, 10), postMaterial);
+    post.position.set(x, 1.6, 0.4);
+    group.add(post);
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(1.22, 1.75, 0.16),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+    panel.position.set(x, 3.15, 0);
+    panel.rotation.x = -0.18;
+    panel.rotation.z = (index - 1.5) * 0.05;
+    group.add(panel);
+  });
+  return group;
+}
+
+function createWetLabBench() {
+  const group = new THREE.Group();
+  const benchMaterial = new THREE.MeshToonMaterial({ color: 0x17463e });
+  const glassMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xcaf9e9,
+    transparent: true,
+    opacity: 0.4,
+    roughness: 0.12,
+  });
+  const liquidColors = [0x83ca4a, 0xf8cb54, 0xff8b72];
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.3, 2.6), benchMaterial);
+  top.position.y = 2.05;
+  top.castShadow = true;
+  group.add(top);
+  [-2.35, 2.35].forEach((x) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2, 2.1), benchMaterial);
+    leg.position.set(x, 1, 0);
+    group.add(leg);
+  });
+
+  [-1.6, 0, 1.6].forEach((x, index) => {
+    const flask = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.62, 1.35, 18),
+      glassMaterial,
+    );
+    flask.position.set(x, 2.85, 0);
+    group.add(flask);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.21, 0.75, 14), glassMaterial);
+    neck.position.set(x, 3.78, 0);
+    group.add(neck);
+    const liquid = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.53, 0.24, 16),
+      new THREE.MeshToonMaterial({ color: liquidColors[index], transparent: true, opacity: 0.85 }),
+    );
+    liquid.position.set(x, 2.38, 0);
+    group.add(liquid);
+  });
+  return group;
+}
+
+function createCarotenoidHub() {
+  const group = new THREE.Group();
+  const hubPosition = new THREE.Vector3(0, 2.8, 0);
+  const hub = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.9, 1),
+    new THREE.MeshToonMaterial({ color: 0xf39a2d }),
+  );
+  hub.position.copy(hubPosition);
+  hub.castShadow = true;
+  group.add(hub);
+
+  const branchColors = [0xffbe38, 0xe85b48, 0xe6c83c, 0xee7790];
+  branchColors.forEach((color, index) => {
+    const angle = (index / branchColors.length) * Math.PI * 2;
+    const end = new THREE.Vector3(Math.cos(angle) * 2.5, 1.2 + (index % 2) * 1.1, Math.sin(angle) * 2.5);
+    group.add(tube([hubPosition, hubPosition.clone().lerp(end, 0.52), end], 0.09, new THREE.MeshToonMaterial({ color })));
+    const node = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.58, 0),
+      new THREE.MeshToonMaterial({ color }),
+    );
+    node.position.copy(end);
+    node.castShadow = true;
+    group.add(node);
+  });
+  return group;
+}
+
+function createProductDepot() {
+  const group = new THREE.Group();
+  const colors = [0xf7a52d, 0xe65c42, 0xe9c43a, 0xed7688];
+  colors.forEach((color, index) => {
+    const x = (index - 1.5) * 1.45;
+    const tank = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.68, 2.4 + (index % 2) * 0.55, 16),
+      new THREE.MeshToonMaterial({ color }),
+    );
+    tank.position.set(x, 1.25 + (index % 2) * 0.28, 0);
+    tank.castShadow = true;
+    group.add(tank);
+    const cap = new THREE.Mesh(
+      new THREE.ConeGeometry(0.58, 0.55, 16),
+      new THREE.MeshToonMaterial({ color: 0x173f3a }),
+    );
+    cap.position.set(x, 2.72 + (index % 2) * 0.55, 0);
+    group.add(cap);
+  });
+  return group;
+}
+
+function createSustainabilityStation() {
+  const group = new THREE.Group();
+  const frameMaterial = new THREE.MeshToonMaterial({ color: 0x17463e });
+  const solarMaterial = new THREE.MeshToonMaterial({ color: 0x386a78 });
+
+  [-1.8, 0, 1.8].forEach((x) => {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.12, 2.25), solarMaterial);
+    panel.position.set(x, 1.55, 0);
+    panel.rotation.x = -0.42;
+    panel.castShadow = true;
+    group.add(panel);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.45, 10), frameMaterial);
+    post.position.set(x, 0.75, 0.3);
+    group.add(post);
+  });
+
+  const waterLoop = new THREE.Mesh(
+    new THREE.TorusGeometry(1.2, 0.16, 10, 36),
+    new THREE.MeshToonMaterial({ color: 0x7de2ff }),
+  );
+  waterLoop.position.set(0, 2.35, -2.15);
+  waterLoop.rotation.y = Math.PI / 2;
+  group.add(waterLoop);
+  return group;
+}
+
 function addProp(
   scene: THREE.Scene,
   curve: THREE.CatmullRomCurve3,
@@ -805,6 +1025,21 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const signTangent = curve.getTangentAt(chapter.t).normalize();
       sign.rotation.y = Math.atan2(signTangent.x, signTangent.z);
       roadSigns.push({ t: chapter.t, object: sign });
+    });
+
+    const scenicFeatures = [
+      { t: 0.07, offset: 10.4, object: createSaltworksOutpost(), scale: 0.72, turn: 0.12 },
+      { t: 0.17, offset: 10.2, object: createPhotobioreactorStation(), scale: 0.76, turn: -0.1 },
+      { t: 0.36, offset: -10.1, object: createLightArray(), scale: 0.78, turn: 0.12 },
+      { t: 0.5, offset: 10, object: createWetLabBench(), scale: 0.75, turn: -0.1 },
+      { t: 0.66, offset: -10.2, object: createCarotenoidHub(), scale: 0.78, turn: 0.12 },
+      { t: 0.8, offset: -10.2, object: createProductDepot(), scale: 0.8, turn: -0.1 },
+      { t: 0.92, offset: 10.5, object: createSustainabilityStation(), scale: 0.78, turn: 0.12 },
+    ];
+    scenicFeatures.forEach((feature) => {
+      addProp(scene, curve, feature.t, feature.offset, feature.object, feature.scale);
+      const featureTangent = curve.getTangentAt(feature.t).normalize();
+      feature.object.rotation.y = Math.atan2(featureTangent.x, featureTangent.z) + feature.turn;
     });
 
     const cell = createDunaliella();
