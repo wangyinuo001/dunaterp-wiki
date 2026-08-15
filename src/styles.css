@@ -18,3 +18,501 @@
 .wiki-terminal{position:absolute;z-index:30;left:50%;top:50%;width:min(58rem,calc(100vw - 2rem));padding:clamp(2rem,6vw,5rem);color:var(--ink);background:rgba(247,241,223,.96);border:1px solid white;border-radius:2rem;box-shadow:0 3rem 12rem rgba(2,17,15,.5);transform:translate(-50%,-50%) scale(.25);opacity:0;visibility:hidden;transition:transform .8s cubic-bezier(.2,.8,.2,1),opacity .45s,visibility .45s}.is-arriving .wiki-terminal{transform:translate(-50%,-50%) scale(1);opacity:1;visibility:visible}.wiki-terminal>p:first-child{margin:0;color:#568148;font-size:.63rem;font-weight:900;letter-spacing:.17em}.wiki-terminal h2{margin:1rem 0 1.5rem;font-family:Georgia,serif;font-size:clamp(3rem,7vw,6rem);font-weight:500;line-height:.84;letter-spacing:-.055em}.wiki-terminal h2+p{max-width:41rem;font-size:1.05rem;line-height:1.6;color:#36514c}.wiki-terminal>div{display:flex;gap:.7rem;flex-wrap:wrap;margin:2rem 0}.wiki-terminal a{padding:.9rem 1.2rem;border:1px solid var(--ink);border-radius:999px;font-size:.72rem;font-weight:900;text-decoration:none;text-transform:uppercase;letter-spacing:.06em}.wiki-terminal a:first-child{background:var(--ink);color:white}.wiki-terminal small{display:block;padding-top:1.25rem;border-top:1px solid var(--line);color:#67807a;line-height:1.5}.restart-drive{position:absolute;z-index:42;right:1rem;top:5.8rem;width:2.4rem;height:2.4rem;border:1px solid rgba(255,255,255,.5);border-radius:50%;background:rgba(4,28,25,.55);color:white;font-size:1rem;cursor:pointer}.webgl-fallback{min-height:100vh;padding:8rem clamp(1.5rem,7vw,8rem);background:var(--cream);color:var(--ink)}.webgl-fallback h1{max-width:50rem;font:500 clamp(3.5rem,8vw,7rem)/.9 Georgia,serif;letter-spacing:-.05em}.webgl-fallback p{max-width:38rem;font-size:1.1rem;line-height:1.6}.webgl-fallback>a{display:inline-block;margin-top:1rem;padding:.9rem 1.2rem;border-radius:999px;background:var(--ink);color:white;text-decoration:none;font-weight:800}
 @media(max-width:800px){.world-intro{justify-content:flex-end;padding-bottom:7rem;background:linear-gradient(0deg,rgba(3,28,25,.9),rgba(3,28,25,.08) 75%)}.world-intro h1{font-size:clamp(4rem,18vw,6rem)}.world-intro h1+p{font-size:.9rem;max-width:90%}.world-hud{bottom:3.6rem;grid-template-columns:2.4rem 1fr;padding:1rem}.world-hud h2{font-size:1.9rem}.world-controls{display:none}.world-route{bottom:1.3rem}.wiki-terminal{padding:2rem 1.4rem}.wiki-terminal h2{font-size:3.2rem}.restart-drive{top:5.4rem}}
 @media(prefers-reduced-motion:reduce){.duna-stage{filter:saturate(.85)}.world-intro,.world-hud,.wiki-terminal{transition:none}}
+
+/* Scroll-driven salt-flat route. The terminal interaction follows the split preview/content
+   architecture of Bruno Simon's MIT-licensed Folio 2025 without reusing its artwork. */
+.duna-world{
+  position:relative;
+  inset:auto;
+  min-height:0;
+  overflow:clip;
+  background:#8fd0d2;
+}
+.duna-sticky{
+  position:sticky;
+  top:0;
+  z-index:1;
+  height:100svh;
+  overflow:hidden;
+  background:#8fd0d2;
+}
+.duna-stage{
+  position:absolute;
+  inset:0;
+  touch-action:pan-y;
+}
+.duna-canvas,
+.duna-canvas:active{
+  cursor:default;
+}
+.duna-world .world-intro{
+  position:absolute;
+  inset:0;
+}
+.duna-world .world-intro button span{
+  font-size:1.2rem;
+}
+.duna-scroll-story{
+  position:relative;
+  z-index:10;
+  color:#fff;
+  pointer-events:none;
+}
+.duna-scroll-lead{
+  height:95svh;
+}
+.duna-scroll-chapter{
+  min-height:95svh;
+  display:grid;
+  align-items:center;
+  padding:8rem clamp(1.5rem,7vw,8rem);
+}
+.duna-scroll-chapter>div{
+  width:min(42rem,86vw);
+  text-shadow:0 .12rem 1rem rgba(1,22,19,.7),0 1.2rem 4rem rgba(1,22,19,.38);
+}
+.duna-scroll-chapter.is-right>div{
+  margin-left:auto;
+  text-align:right;
+}
+.duna-scroll-chapter>div>p:first-child{
+  display:flex;
+  align-items:center;
+  gap:.85rem;
+  margin:0 0 1.25rem;
+  color:var(--chapter-accent);
+  font-size:.66rem;
+  font-weight:900;
+  letter-spacing:.18em;
+}
+.duna-scroll-chapter.is-right>div>p:first-child{
+  justify-content:flex-end;
+}
+.duna-scroll-chapter>div>p:first-child span{
+  font-variant-numeric:tabular-nums;
+  color:#fff;
+  opacity:.68;
+}
+.duna-scroll-chapter h2{
+  max-width:11ch;
+  margin:0;
+  font:500 clamp(3.6rem,8vw,8rem)/.82 Georgia,"Times New Roman",serif;
+  letter-spacing:-.07em;
+}
+.duna-scroll-chapter.is-right h2{
+  margin-left:auto;
+}
+.duna-scroll-chapter h2+p{
+  max-width:34rem;
+  margin:1.8rem 0 0;
+  color:rgba(255,255,255,.82);
+  font-size:clamp(.95rem,1.35vw,1.2rem);
+  line-height:1.65;
+}
+.duna-scroll-chapter.is-right h2+p{
+  margin-left:auto;
+}
+.duna-scroll-chapter a{
+  display:inline-block;
+  margin-top:1.4rem;
+  color:var(--chapter-accent);
+  font-size:.7rem;
+  font-weight:900;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  text-underline-offset:.32rem;
+  pointer-events:auto;
+}
+.duna-terminal-space{
+  min-height:135svh;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  padding-top:12svh;
+}
+.duna-terminal-space span{
+  color:rgba(255,255,255,.68);
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  text-shadow:0 .2rem 1.5rem rgba(2,22,19,.8);
+}
+.duna-world .world-route{
+  transition:opacity .3s ease;
+}
+.duna-world.is-arriving .world-route{
+  opacity:0;
+}
+.duna-world .wiki-terminal,
+.duna-world.is-arriving .wiki-terminal{
+  position:absolute;
+  left:50%;
+  top:53%;
+  z-index:35;
+  width:min(1120px,calc(100vw - 3rem));
+  padding:0;
+  color:#fff;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  opacity:var(--panel-progress);
+  visibility:visible;
+  transform:translate(-50%,-50%) scale(calc(.4 + var(--panel-progress) * .6));
+  transform-origin:50% 50%;
+  transition:none;
+  pointer-events:none;
+}
+.duna-world.is-panel-ready .wiki-terminal{
+  pointer-events:auto;
+}
+.terminal-tabs{
+  display:flex;
+  align-items:flex-end;
+  gap:3px;
+  margin-left:42%;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.terminal-tabs::-webkit-scrollbar{
+  display:none;
+}
+.terminal-tabs button{
+  min-width:8.1rem;
+  height:3rem;
+  padding:.35rem .75rem;
+  border:1px solid rgba(255,255,255,.36);
+  border-bottom:0;
+  border-radius:.55rem .55rem 0 0;
+  background:rgba(5,28,25,.83);
+  color:rgba(255,255,255,.64);
+  font:800 .64rem/1 system-ui;
+  letter-spacing:.05em;
+  cursor:pointer;
+  transition:height .18s ease,background .18s ease,color .18s ease;
+  backdrop-filter:blur(12px);
+}
+.terminal-tabs button span{
+  display:block;
+  margin-bottom:.25rem;
+  color:var(--lime);
+  font-size:.52rem;
+  letter-spacing:.16em;
+}
+.terminal-tabs button:hover,
+.terminal-tabs button.is-active{
+  height:3.35rem;
+  color:#fff;
+  background:#082c27;
+}
+.wiki-terminal>.terminal-shell{
+  display:grid;
+  grid-template-columns:42% 58%;
+  gap:0;
+  width:100%;
+  height:min(650px,74svh);
+  margin:0;
+  overflow:hidden;
+  border:3px solid #082c27;
+  border-radius:.6rem 0 .6rem .6rem;
+  background:#082c27;
+  box-shadow:0 3rem 12rem rgba(2,17,15,.58);
+}
+.terminal-preview{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  overflow:hidden;
+  padding:clamp(1.6rem,3vw,3rem);
+  background:
+    linear-gradient(145deg,transparent 42%,rgba(255,255,255,.08)),
+    radial-gradient(circle at 55% 35%,var(--panel-accent),#16564d 48%,#082c27 82%);
+}
+.terminal-preview::after{
+  content:"";
+  position:absolute;
+  inset:.45rem;
+  border:1px solid rgba(255,255,255,.36);
+  pointer-events:none;
+}
+.terminal-code{
+  position:absolute;
+  top:1.4rem;
+  left:1.5rem;
+  z-index:2;
+  font:900 .58rem/1 system-ui;
+  letter-spacing:.18em;
+}
+.terminal-preview>p,
+.terminal-preview>h2{
+  position:relative;
+  z-index:2;
+}
+.terminal-preview>p:nth-of-type(1){
+  margin:0 0 .8rem;
+  color:var(--panel-accent);
+  font-size:.6rem;
+  font-weight:900;
+  letter-spacing:.17em;
+}
+.terminal-preview h2{
+  margin:0;
+  max-width:8ch;
+  color:#fff;
+  font:500 clamp(3rem,5.8vw,5.8rem)/.82 Georgia,"Times New Roman",serif;
+  letter-spacing:-.065em;
+}
+.terminal-preview>p:last-child{
+  max-width:28rem;
+  margin:1.25rem 0 0;
+  color:rgba(255,255,255,.72);
+  font-size:.82rem;
+  line-height:1.55;
+}
+.terminal-cell{
+  position:absolute;
+  left:50%;
+  top:37%;
+  width:9.5rem;
+  height:12.5rem;
+  border:2px solid rgba(255,255,255,.72);
+  border-radius:48% 52% 58% 42% / 62% 61% 39% 38%;
+  background:rgba(105,190,76,.32);
+  box-shadow:inset 0 0 0 1.2rem rgba(15,97,66,.2),0 2rem 5rem rgba(2,22,19,.26);
+  transform:translate(-50%,-50%) rotate(-8deg);
+}
+.terminal-cell::before{
+  content:"";
+  position:absolute;
+  left:45%;
+  top:42%;
+  width:2.5rem;
+  height:2.5rem;
+  border-radius:50%;
+  background:#eef0b2;
+  box-shadow:3.1rem -2.2rem 0 -1rem #e9502f;
+}
+.terminal-cell::after{
+  content:"";
+  position:absolute;
+  left:16%;
+  bottom:13%;
+  width:68%;
+  height:44%;
+  border:.65rem solid #75b73f;
+  border-top-color:transparent;
+  border-radius:50%;
+}
+.terminal-cell i{
+  position:absolute;
+  top:-7.2rem;
+  width:1.3rem;
+  height:8.6rem;
+  border-left:2px solid rgba(255,255,255,.8);
+  border-radius:50%;
+  transform-origin:50% 100%;
+}
+.terminal-cell i:first-child{
+  left:38%;
+  transform:rotate(-18deg);
+}
+.terminal-cell i:nth-child(2){
+  right:28%;
+  transform:rotate(19deg) scaleX(-1);
+}
+.terminal-content{
+  min-width:0;
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+  overflow:hidden;
+  background:#f7f1df;
+  color:#102e2a;
+}
+.terminal-content>header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:1.5rem;
+  padding:clamp(1.4rem,2.5vw,2.5rem);
+  border-bottom:1px solid rgba(16,46,42,.18);
+}
+.terminal-content>header p{
+  margin:0 0 .45rem;
+  color:#64815e;
+  font-size:.55rem;
+  font-weight:900;
+  letter-spacing:.16em;
+}
+.terminal-content>header h3{
+  margin:0;
+  font:500 clamp(2.2rem,4vw,4rem)/.9 Georgia,"Times New Roman",serif;
+  letter-spacing:-.055em;
+}
+.wiki-terminal .terminal-content>header>a{
+  flex:0 0 auto;
+  margin:0;
+  padding:.65rem .8rem;
+  border:1px solid #102e2a;
+  border-radius:999px;
+  background:transparent;
+  color:#102e2a;
+  font-size:.58rem;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-decoration:none;
+  text-transform:uppercase;
+}
+.terminal-links{
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.wiki-terminal .terminal-links a{
+  display:grid;
+  grid-template-columns:2rem minmax(9rem,1fr) minmax(10rem,1.2fr) auto;
+  align-items:center;
+  gap:1rem;
+  min-height:5.15rem;
+  margin:0;
+  padding:.9rem clamp(1.2rem,2.5vw,2.5rem);
+  border:0;
+  border-bottom:1px solid rgba(16,46,42,.18);
+  border-radius:0;
+  background:transparent;
+  color:#102e2a;
+  text-decoration:none;
+  text-transform:none;
+  transition:background .18s ease,padding-left .18s ease;
+}
+.wiki-terminal .terminal-links a:hover{
+  padding-left:calc(clamp(1.2rem,2.5vw,2.5rem) + .35rem);
+  background:color-mix(in srgb,var(--panel-accent) 20%,#f7f1df);
+}
+.terminal-links a>span{
+  color:#64815e;
+  font-size:.58rem;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.terminal-links a>strong{
+  font:500 clamp(1.25rem,2vw,1.75rem)/1 Georgia,"Times New Roman",serif;
+}
+.wiki-terminal .terminal-links a>small{
+  display:block;
+  padding:0;
+  border:0;
+  color:#58706a;
+  font-size:.67rem;
+  font-weight:650;
+  line-height:1.4;
+  letter-spacing:0;
+}
+.terminal-links a>b{
+  font-size:1rem;
+}
+.terminal-content>footer{
+  display:flex;
+  justify-content:space-between;
+  gap:1rem;
+  padding:1rem clamp(1.2rem,2.5vw,2.5rem);
+  color:#64815e;
+  font-size:.52rem;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.duna-world .restart-drive{
+  opacity:calc(.35 + var(--journey-progress) * .65);
+}
+
+@media(max-width:800px){
+  .duna-scroll-chapter,
+  .duna-scroll-chapter.is-right{
+    align-items:end;
+    padding:7rem 1.35rem 15svh;
+  }
+  .duna-scroll-chapter.is-right>div,
+  .duna-scroll-chapter.is-right h2,
+  .duna-scroll-chapter.is-right h2+p{
+    margin-left:0;
+    text-align:left;
+  }
+  .duna-scroll-chapter.is-right>div>p:first-child{
+    justify-content:flex-start;
+  }
+  .duna-scroll-chapter h2{
+    font-size:clamp(3.6rem,18vw,6.6rem);
+  }
+  .duna-terminal-space{
+    padding-top:9svh;
+  }
+  .duna-world .wiki-terminal,
+  .duna-world.is-arriving .wiki-terminal{
+    top:52%;
+    width:calc(100vw - 1rem);
+  }
+  .terminal-tabs{
+    margin-left:0;
+  }
+  .terminal-tabs button{
+    min-width:7.2rem;
+  }
+  .wiki-terminal>.terminal-shell{
+    grid-template-columns:1fr;
+    grid-template-rows:30% 70%;
+    height:80svh;
+    border-radius:0 0 .55rem .55rem;
+  }
+  .terminal-preview{
+    padding:1.2rem 1.4rem;
+  }
+  .terminal-preview h2{
+    font-size:2.7rem;
+  }
+  .terminal-preview>p:last-child{
+    max-width:70%;
+    margin-top:.65rem;
+    font-size:.7rem;
+  }
+  .terminal-cell{
+    left:82%;
+    top:48%;
+    width:4.3rem;
+    height:6rem;
+  }
+  .terminal-cell i{
+    top:-3.4rem;
+    height:4rem;
+  }
+  .terminal-content>header{
+    padding:1.1rem 1.2rem;
+  }
+  .terminal-content>header h3{
+    font-size:2rem;
+  }
+  .wiki-terminal .terminal-links a{
+    grid-template-columns:1.5rem 1fr auto;
+    min-height:4.4rem;
+    gap:.65rem;
+    padding:.75rem 1.2rem;
+  }
+  .wiki-terminal .terminal-links a>small{
+    display:none;
+  }
+  .terminal-content>footer{
+    padding:.8rem 1.2rem;
+  }
+  .terminal-content>footer span:first-child{
+    display:none;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .duna-scroll-chapter>div{
+    text-shadow:0 .1rem 1rem rgba(1,22,19,.8);
+  }
+  .duna-world .wiki-terminal,
+  .duna-world.is-arriving .wiki-terminal{
+    transform:translate(-50%,-50%) scale(calc(.7 + var(--panel-progress) * .3));
+  }
+}

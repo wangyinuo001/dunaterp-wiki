@@ -16,9 +16,9 @@ export type WikiPage = {
 };
 
 export const navigation: Array<{ label: string; items: ReadonlyArray<readonly [string, string]> }> = [
-  { label: "Project", items: [["Description", "/project-description"], ["Engineering", "/engineering"], ["Experiments", "/experiments"], ["Results", "/results"]] },
-  { label: "Science", items: [["Model", "/model"], ["Alternative Platform", "/alternative-platform"], ["Contribution", "/contribution"], ["Safety", "/safety-and-security"]] },
-  { label: "Society", items: [["Human Practices", "/human-practices"], ["Sustainability", "/sustainability"], ["Education", "/education"]] },
+  { label: "Wet Lab", items: [["Description", "/project-description"], ["Engineering", "/engineering"], ["Experiments", "/experiments"], ["Results", "/results"], ["Safety", "/safety-and-security"]] },
+  { label: "Dry Lab", items: [["Model", "/model"], ["Alternative Platform", "/alternative-platform"], ["Contribution", "/contribution"]] },
+  { label: "Human Practices", items: [["Human Practices", "/human-practices"], ["Sustainability", "/sustainability"], ["Education", "/education"]] },
   { label: "People", items: [["Team", "/team"], ["Attributions", "/attributions"], ["Responsible AI", "/responsible-ai"]] },
 ];
 
