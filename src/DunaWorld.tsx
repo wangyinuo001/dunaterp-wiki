@@ -217,56 +217,49 @@ function createRoadSign(chapter: (typeof chapters)[number]) {
   const group = new THREE.Group();
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
-  canvas.height = 600;
+  canvas.height = 480;
   const context = canvas.getContext("2d")!;
 
   context.fillStyle = "#082c27";
-  context.roundRect(18, 18, 1164, 564, 54);
+  context.roundRect(18, 18, 1164, 444, 54);
   context.fill();
   context.strokeStyle = chapter.c;
   context.lineWidth = 12;
   context.stroke();
 
   context.fillStyle = chapter.c;
-  context.font = "900 34px system-ui";
+  context.font = "900 40px system-ui";
   context.letterSpacing = "5px";
-  context.fillText(`${chapter.n}  ${chapter.kicker}`, 72, 92);
+  context.fillText(`${chapter.n}  ${chapter.kicker}`, 72, 102);
 
   context.fillStyle = "#fff8df";
-  context.font = "800 88px Georgia";
+  context.font = "800 104px Georgia";
   context.letterSpacing = "-3px";
   wrapCanvasText(context, chapter.title, 1020, 2).forEach((line, index) => {
-    context.fillText(line, 72, 210 + index * 92);
-  });
-
-  context.fillStyle = "rgba(255,248,223,.72)";
-  context.font = "600 31px system-ui";
-  context.letterSpacing = "0px";
-  wrapCanvasText(context, chapter.body, 1040, 2).forEach((line, index) => {
-    context.fillText(line, 72, 438 + index * 44);
+    context.fillText(line, 72, 252 + index * 108);
   });
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const back = new THREE.Mesh(
-    new THREE.BoxGeometry(7.55, 3.85, 0.18),
+    new THREE.BoxGeometry(7.55, 3.08, 0.18),
     new THREE.MeshToonMaterial({ color: 0x082c27 }),
   );
-  back.position.y = 4.15;
+  back.position.y = 3.72;
   back.castShadow = true;
   group.add(back);
 
   const face = new THREE.Mesh(
-    new THREE.PlaneGeometry(7.3, 3.6),
+    new THREE.PlaneGeometry(7.3, 2.82),
     new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
   );
-  face.position.set(0, 4.15, 0.1);
+  face.position.set(0, 3.72, 0.1);
   group.add(face);
 
   const postMaterial = new THREE.MeshToonMaterial({ color: 0xf4e8c7 });
   [-2.45, 2.45].forEach((x) => {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 5.1, 12), postMaterial);
-    post.position.set(x, 2.25, -0.08);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 4.55, 12), postMaterial);
+    post.position.set(x, 2.08, -0.08);
     post.castShadow = true;
     group.add(post);
   });
@@ -660,16 +653,19 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const vehicle = createVehicle();
     scene.add(vehicle);
 
+    const roadSigns: Array<{ t: number; object: THREE.Group }> = [];
     chapters.forEach((chapter, index) => {
       const sign = createRoadSign(chapter);
       const side = index % 2 === 0 ? -1 : 1;
-      addProp(scene, curve, chapter.t, side * 6.1, sign, 0.82);
+      addProp(scene, curve, chapter.t, side * 6.8, sign, 0.82);
       const signTangent = curve.getTangentAt(chapter.t).normalize();
       sign.rotation.y = Math.atan2(signTangent.x, signTangent.z);
+      roadSigns.push({ t: chapter.t, object: sign });
     });
 
     const cell = createDunaliella();
-    addProp(scene, curve, 0.25, -7.1, cell, 0.82);
+    addProp(scene, curve, 0.25, -8.4, cell, 0.95);
+    cell.position.y = 2.7;
 
     const helix = createHelix();
     addProp(scene, curve, 0.42, 6, helix, 0.78);
@@ -791,7 +787,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const height = host.clientHeight;
       renderer.setSize(width, height);
       const aspect = width / height;
-      const view = 9.5;
+      const view = 11.6;
       camera.left = -view * aspect;
       camera.right = view * aspect;
       camera.top = view;
@@ -819,13 +815,26 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       vehicle.rotation.y = Math.atan2(tangent.x, tangent.z);
       vehicle.rotation.z = Math.sin(currentProgress * Math.PI * 14) * -0.035;
 
+      let closestSignIndex = 0;
+      let closestSignDistance = Number.POSITIVE_INFINITY;
+      roadSigns.forEach((sign, index) => {
+        const distance = Math.abs(currentProgress - sign.t);
+        if (distance < closestSignDistance) {
+          closestSignDistance = distance;
+          closestSignIndex = index;
+        }
+      });
+      roadSigns.forEach((sign, index) => {
+        sign.object.visible = currentProgress < 0.925 && index === closestSignIndex && closestSignDistance < 0.13;
+      });
+
       const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.87, 0.995);
-      travelTarget.copy(vehicle.position).addScaledVector(tangent, -3.5);
+      travelTarget.copy(vehicle.position).addScaledVector(tangent, -4.5);
       travelCamera
         .copy(vehicle.position)
-        .addScaledVector(tangent, 11)
-        .addScaledVector(side, 7)
-        .add(new THREE.Vector3(0, 12, 0));
+        .addScaledVector(tangent, 10.5)
+        .addScaledVector(side, 4.5)
+        .add(new THREE.Vector3(0, 17, 0));
       cameraTarget.lerpVectors(travelTarget, terminalTarget, arriving);
       cameraPosition.lerpVectors(travelCamera, terminalCamera, arriving);
       camera.position.lerp(cameraPosition, 0.055);
