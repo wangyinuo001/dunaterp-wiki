@@ -441,6 +441,22 @@ function createVehicle() {
   );
   glow.position.set(0, 0.58, 1.081);
   vehicle.add(glow);
+
+  const rearBumper = new THREE.Mesh(
+    new THREE.BoxGeometry(1.12, 0.16, 0.12),
+    new THREE.MeshToonMaterial({ color: 0x173f3a }),
+  );
+  rearBumper.position.set(0, 0.42, -1.11);
+  vehicle.add(rearBumper);
+  [-0.43, 0.43].forEach((x) => {
+    const tailLight = new THREE.Mesh(
+      new THREE.CircleGeometry(0.1, 16),
+      new THREE.MeshBasicMaterial({ color: 0xff5e45 }),
+    );
+    tailLight.position.set(x, 0.64, -1.086);
+    tailLight.rotation.y = Math.PI;
+    vehicle.add(tailLight);
+  });
   return vehicle;
 }
 
@@ -1023,7 +1039,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const side = index % 2 === 0 ? -1 : 1;
       addProp(scene, curve, chapter.t, side * 6.8, sign, 0.82);
       const signTangent = curve.getTangentAt(chapter.t).normalize();
-      sign.rotation.y = Math.atan2(signTangent.x, signTangent.z);
+      sign.rotation.y = Math.atan2(signTangent.x, signTangent.z) + Math.PI;
       roadSigns.push({ t: chapter.t, object: sign });
     });
 
@@ -1039,7 +1055,9 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     scenicFeatures.forEach((feature) => {
       addProp(scene, curve, feature.t, feature.offset, feature.object, feature.scale);
       const featureTangent = curve.getTangentAt(feature.t).normalize();
-      feature.object.rotation.y = Math.atan2(featureTangent.x, featureTangent.z) + feature.turn;
+      feature.object.rotation.y = Math.atan2(featureTangent.x, featureTangent.z)
+        + Math.PI
+        + feature.turn;
     });
 
     const cell = createDunaliella();
@@ -1149,7 +1167,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     gateTop.castShadow = true;
     terminal.add(gateTop);
     const terminalTangent = curve.getTangentAt(0.985).normalize();
-    terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z);
+    terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z) + Math.PI;
     addProp(scene, curve, 0.985, 0, terminal, 1);
 
     let targetProgress = 0.001;
@@ -1165,9 +1183,22 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 3.35, 0));
     const terminalCamera = terminal.position
       .clone()
-      .addScaledVector(terminalTangent, 12)
+      .addScaledVector(terminalTangent, -12)
       .add(new THREE.Vector3(0, 5.4, 0));
     const clock = new THREE.Clock();
+
+    const startPoint = curve.getPointAt(0.001);
+    const startTangent = curve.getTangentAt(0.001).normalize();
+    camera.position
+      .copy(startPoint)
+      .addScaledVector(startTangent, -8.8)
+      .add(new THREE.Vector3(0, 5.8, 0));
+    camera.lookAt(
+      startPoint
+        .clone()
+        .addScaledVector(startTangent, 4.2)
+        .add(new THREE.Vector3(0, 0.8, 0)),
+    );
 
     const updateScrollProgress = () => {
       const rootTop = root.getBoundingClientRect().top + window.scrollY;
@@ -1321,16 +1352,19 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
       const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.995);
       const shotPhase = currentProgress * Math.PI * 4;
-      const sideOffset = 4.2 + Math.sin(shotPhase) * 1.45;
-      const cameraHeight = 8.5 + Math.cos(shotPhase * 0.72) * 1.15;
-      const cameraLead = 12.4 + Math.sin(shotPhase * 0.55) * 1.25;
+      const sideOffset = Math.sin(shotPhase * 0.82) * 0.72;
+      const cameraHeight = 5.5 + Math.cos(shotPhase * 0.72) * 0.45;
+      const cameraTrail = 8.8 + Math.sin(shotPhase * 0.55) * 0.45;
       const cellReveal = THREE.MathUtils.smoothstep(currentProgress, 0.17, 0.23)
         * (1 - THREE.MathUtils.smoothstep(currentProgress, 0.3, 0.36));
-      travelTarget.copy(vehicleGroundPosition).addScaledVector(tangent, -2.8);
+      travelTarget
+        .copy(vehicleGroundPosition)
+        .addScaledVector(tangent, 4.2)
+        .add(new THREE.Vector3(0, 0.75 + dropHeight * 0.28, 0));
       travelTarget.lerp(cell.position, cellReveal * 0.3);
       travelCamera
         .copy(vehicleGroundPosition)
-        .addScaledVector(tangent, cameraLead)
+        .addScaledVector(tangent, -cameraTrail)
         .addScaledVector(side, sideOffset)
         .add(new THREE.Vector3(0, cameraHeight, 0));
       cameraTarget.lerpVectors(travelTarget, terminalTarget, arriving);
