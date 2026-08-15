@@ -189,6 +189,91 @@ function textSprite(text: string, accent = "#d5ff61", scale = 1) {
   return sprite;
 }
 
+function wrapCanvasText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+) {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let line = "";
+
+  for (const word of words) {
+    const testLine = line ? `${line} ${word}` : word;
+    if (context.measureText(testLine).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+      if (lines.length === maxLines - 1) break;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  return lines;
+}
+
+function createRoadSign(chapter: (typeof chapters)[number]) {
+  const group = new THREE.Group();
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 600;
+  const context = canvas.getContext("2d")!;
+
+  context.fillStyle = "#082c27";
+  context.roundRect(18, 18, 1164, 564, 54);
+  context.fill();
+  context.strokeStyle = chapter.c;
+  context.lineWidth = 12;
+  context.stroke();
+
+  context.fillStyle = chapter.c;
+  context.font = "900 34px system-ui";
+  context.letterSpacing = "5px";
+  context.fillText(`${chapter.n}  ${chapter.kicker}`, 72, 92);
+
+  context.fillStyle = "#fff8df";
+  context.font = "800 88px Georgia";
+  context.letterSpacing = "-3px";
+  wrapCanvasText(context, chapter.title, 1020, 2).forEach((line, index) => {
+    context.fillText(line, 72, 210 + index * 92);
+  });
+
+  context.fillStyle = "rgba(255,248,223,.72)";
+  context.font = "600 31px system-ui";
+  context.letterSpacing = "0px";
+  wrapCanvasText(context, chapter.body, 1040, 2).forEach((line, index) => {
+    context.fillText(line, 72, 438 + index * 44);
+  });
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const back = new THREE.Mesh(
+    new THREE.BoxGeometry(7.55, 3.85, 0.18),
+    new THREE.MeshToonMaterial({ color: 0x082c27 }),
+  );
+  back.position.y = 4.15;
+  back.castShadow = true;
+  group.add(back);
+
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.3, 3.6),
+    new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+  );
+  face.position.set(0, 4.15, 0.1);
+  group.add(face);
+
+  const postMaterial = new THREE.MeshToonMaterial({ color: 0xf4e8c7 });
+  [-2.45, 2.45].forEach((x) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 5.1, 12), postMaterial);
+    post.position.set(x, 2.25, -0.08);
+    post.castShadow = true;
+    group.add(post);
+  });
+
+  return group;
+}
+
 function tube(points: THREE.Vector3[], radius: number, material: THREE.Material) {
   return new THREE.Mesh(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 48, radius, 8, false),
@@ -575,6 +660,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const vehicle = createVehicle();
     scene.add(vehicle);
 
+    chapters.forEach((chapter, index) => {
+      const sign = createRoadSign(chapter);
+      const side = index % 2 === 0 ? -1 : 1;
+      addProp(scene, curve, chapter.t, side * 6.1, sign, 0.82);
+      const signTangent = curve.getTangentAt(chapter.t).normalize();
+      sign.rotation.y = Math.atan2(signTangent.x, signTangent.z);
+    });
+
     const cell = createDunaliella();
     addProp(scene, curve, 0.25, -7.1, cell, 0.82);
 
@@ -669,7 +762,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     portalLabel.position.set(0, 2.7, 0.4);
     terminal.add(portalLabel);
     const terminalTangent = curve.getTangentAt(0.985).normalize();
-    terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z) + Math.PI;
+    terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z);
     addProp(scene, curve, 0.985, 0, terminal, 1);
 
     let targetProgress = 0.001;
@@ -683,7 +776,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 2.7, 0));
     const terminalCamera = terminal.position
       .clone()
-      .addScaledVector(terminalTangent, -8)
+      .addScaledVector(terminalTangent, 8)
       .add(new THREE.Vector3(0, 3.4, 0));
     const clock = new THREE.Clock();
 
@@ -727,11 +820,12 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       vehicle.rotation.z = Math.sin(currentProgress * Math.PI * 14) * -0.035;
 
       const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.87, 0.995);
-      travelTarget.copy(vehicle.position).addScaledVector(tangent, 3);
+      travelTarget.copy(vehicle.position).addScaledVector(tangent, -3.5);
       travelCamera
         .copy(vehicle.position)
-        .addScaledVector(tangent, -10)
-        .add(new THREE.Vector3(10, 12, 10));
+        .addScaledVector(tangent, 11)
+        .addScaledVector(side, 7)
+        .add(new THREE.Vector3(0, 12, 0));
       cameraTarget.lerpVectors(travelTarget, terminalTarget, arriving);
       cameraPosition.lerpVectors(travelCamera, terminalCamera, arriving);
       camera.position.lerp(cameraPosition, 0.055);
@@ -822,23 +916,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
       <div className="duna-scroll-story">
         <div className="duna-scroll-lead" aria-hidden="true" />
-        {chapters.map((chapter, index) => (
+        {chapters.map((chapter) => (
           <section
             key={chapter.n}
-            className={`duna-scroll-chapter${index % 2 ? " is-right" : ""}`}
-            style={{ "--chapter-accent": chapter.c } as CSSProperties}
-          >
-            <div>
-              <p><span>{chapter.n}</span>{chapter.kicker}</p>
-              <h2>{chapter.title}</h2>
-              <p>{chapter.body}</p>
-              <Link to={chapter.link}>Explore the chapter ↗</Link>
-            </div>
-          </section>
+            className="duna-scroll-segment"
+            aria-label={`${chapter.n}. ${chapter.kicker}. ${chapter.title}. ${chapter.body}`}
+          />
         ))}
-        <div className="duna-terminal-space" aria-hidden="true">
-          <span>Keep scrolling to enter the Wiki</span>
-        </div>
+        <div className="duna-terminal-space" aria-hidden="true" />
       </div>
     </main>
   );
