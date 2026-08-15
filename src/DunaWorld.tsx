@@ -189,6 +189,33 @@ function textSprite(text: string, accent = "#d5ff61", scale = 1) {
   return sprite;
 }
 
+function createTerminalScreenTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 660;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "#caff61";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "#082c27";
+  context.lineWidth = 22;
+  context.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = "#082c27";
+  context.font = "900 58px system-ui";
+  context.letterSpacing = "12px";
+  context.fillText("END OF ROUTE", 600, 178);
+  context.font = "800 116px Georgia";
+  context.letterSpacing = "-4px";
+  context.fillText("ENTER THE WIKI", 600, 342);
+  context.font = "900 84px system-ui";
+  context.letterSpacing = "18px";
+  context.fillText("↓  ↓  ↓", 600, 514);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 function wrapCanvasText(
   context: CanvasRenderingContext2D,
   text: string,
@@ -558,8 +585,13 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     scene.background = new THREE.Color(0x8fd0d2);
     scene.fog = new THREE.Fog(0x8fd0d2, 35, 78);
 
-    const camera = new THREE.OrthographicCamera(-12, 12, 8, -8, 0.1, 180);
-    camera.position.set(12, 14, 16);
+    const camera = new THREE.PerspectiveCamera(
+      48,
+      host.clientWidth / Math.max(1, host.clientHeight),
+      0.1,
+      180,
+    );
+    camera.position.set(10, 9, 14);
     camera.lookAt(0, 0, 0);
 
     scene.add(new THREE.HemisphereLight(0xe7fbff, 0x304a35, 2.3));
@@ -742,21 +774,33 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
     const terminal = new THREE.Group();
     const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(8, 5, 0.65),
+      new THREE.BoxGeometry(9.2, 5.8, 0.72),
       new THREE.MeshToonMaterial({ color: 0x0a2925 }),
     );
-    frame.position.y = 2.7;
+    frame.position.y = 3.35;
     frame.castShadow = true;
     terminal.add(frame);
     const screen = new THREE.Mesh(
-      new THREE.PlaneGeometry(6.9, 3.75),
-      new THREE.MeshBasicMaterial({ color: 0xcaff61 }),
+      new THREE.PlaneGeometry(8.05, 4.65),
+      new THREE.MeshBasicMaterial({ map: createTerminalScreenTexture() }),
     );
-    screen.position.set(0, 2.7, 0.34);
+    screen.position.set(0, 3.35, 0.38);
     terminal.add(screen);
-    const portalLabel = textSprite("WIKI INDEX", "#082c27", 0.62);
-    portalLabel.position.set(0, 2.7, 0.4);
-    terminal.add(portalLabel);
+    const gateMaterial = new THREE.MeshToonMaterial({ color: 0xf26a21 });
+    const beaconMaterial = new THREE.MeshBasicMaterial({ color: 0xcaff61 });
+    [-5.1, 5.1].forEach((x) => {
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 7.6, 12), gateMaterial);
+      pillar.position.set(x, 3.65, -0.18);
+      pillar.castShadow = true;
+      terminal.add(pillar);
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.48, 18, 12), beaconMaterial);
+      beacon.position.set(x, 7.55, -0.18);
+      terminal.add(beacon);
+    });
+    const gateTop = new THREE.Mesh(new THREE.BoxGeometry(10.7, 0.42, 0.45), gateMaterial);
+    gateTop.position.set(0, 7.2, -0.18);
+    gateTop.castShadow = true;
+    terminal.add(gateTop);
     const terminalTangent = curve.getTangentAt(0.985).normalize();
     terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z);
     addProp(scene, curve, 0.985, 0, terminal, 1);
@@ -769,11 +813,11 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const cameraPosition = new THREE.Vector3();
     const travelTarget = new THREE.Vector3();
     const travelCamera = new THREE.Vector3();
-    const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 2.7, 0));
+    const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 3.35, 0));
     const terminalCamera = terminal.position
       .clone()
-      .addScaledVector(terminalTangent, 8)
-      .add(new THREE.Vector3(0, 3.4, 0));
+      .addScaledVector(terminalTangent, 12)
+      .add(new THREE.Vector3(0, 5.4, 0));
     const clock = new THREE.Clock();
 
     const updateScrollProgress = () => {
@@ -786,12 +830,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const width = host.clientWidth;
       const height = host.clientHeight;
       renderer.setSize(width, height);
-      const aspect = width / height;
-      const view = 11.6;
-      camera.left = -view * aspect;
-      camera.right = view * aspect;
-      camera.top = view;
-      camera.bottom = -view;
+      camera.aspect = width / Math.max(1, height);
       camera.updateProjectionMatrix();
       updateScrollProgress();
     };
@@ -828,17 +867,24 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         sign.object.visible = currentProgress < 0.925 && index === closestSignIndex && closestSignDistance < 0.13;
       });
 
-      const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.87, 0.995);
-      travelTarget.copy(vehicle.position).addScaledVector(tangent, -4.5);
+      const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.995);
+      const shotPhase = currentProgress * Math.PI * 4;
+      const sideOffset = 4.2 + Math.sin(shotPhase) * 1.45;
+      const cameraHeight = 8.5 + Math.cos(shotPhase * 0.72) * 1.15;
+      const cameraLead = 12.4 + Math.sin(shotPhase * 0.55) * 1.25;
+      const cellReveal = THREE.MathUtils.smoothstep(currentProgress, 0.17, 0.23)
+        * (1 - THREE.MathUtils.smoothstep(currentProgress, 0.3, 0.36));
+      travelTarget.copy(vehicle.position).addScaledVector(tangent, -2.8);
+      travelTarget.lerp(cell.position, cellReveal * 0.3);
       travelCamera
         .copy(vehicle.position)
-        .addScaledVector(tangent, 10.5)
-        .addScaledVector(side, 4.5)
-        .add(new THREE.Vector3(0, 17, 0));
+        .addScaledVector(tangent, cameraLead)
+        .addScaledVector(side, sideOffset)
+        .add(new THREE.Vector3(0, cameraHeight, 0));
       cameraTarget.lerpVectors(travelTarget, terminalTarget, arriving);
       cameraPosition.lerpVectors(travelCamera, terminalCamera, arriving);
       camera.position.lerp(cameraPosition, 0.055);
-      camera.zoom = THREE.MathUtils.lerp(1, 1.72, arriving);
+      camera.fov = THREE.MathUtils.lerp(48, 40, arriving);
       camera.updateProjectionMatrix();
       camera.lookAt(cameraTarget);
 
@@ -873,7 +919,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     );
   }
 
-  const panelProgress = Math.max(0, Math.min(1, (progress - 0.89) / 0.085));
+  const panelProgress = Math.max(0, Math.min(1, (progress - 0.958) / 0.034));
   const journeyStyle = {
     "--journey-progress": progress,
     "--panel-progress": panelProgress,
@@ -888,7 +934,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
   return (
     <main
       ref={journey}
-      className={`duna-world${started || progress > 0.025 ? " is-started" : ""}${progress > 0.88 ? " is-arriving" : ""}${progress > 0.955 ? " is-panel-ready" : ""}`}
+      className={`duna-world${started || progress > 0.025 ? " is-started" : ""}${progress > 0.9 ? " is-arriving" : ""}${progress > 0.982 ? " is-panel-ready" : ""}`}
       style={journeyStyle}
     >
       <Header light />
