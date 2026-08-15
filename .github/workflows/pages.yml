@@ -41,6 +41,26 @@ jobs:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: |
           npm run build
+          for route in \
+            wiki-map \
+            project-description \
+            engineering \
+            experiments \
+            results \
+            model \
+            contribution \
+            human-practices \
+            safety-and-security \
+            alternative-platform \
+            sustainability \
+            education \
+            team \
+            attributions \
+            responsible-ai
+          do
+            mkdir -p "dist/$route"
+            cp dist/index.html "dist/$route/index.html"
+          done
           cp dist/index.html dist/404.html
 
       - name: Upload Pages artifact
