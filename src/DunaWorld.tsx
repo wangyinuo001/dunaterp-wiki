@@ -552,40 +552,6 @@ function createHelix() {
   return group;
 }
 
-function createSaltworksOutpost() {
-  const group = new THREE.Group();
-  const saltMaterial = new THREE.MeshToonMaterial({ color: 0xfff8df });
-  const darkMaterial = new THREE.MeshToonMaterial({ color: 0x17463e });
-  const brineMaterial = new THREE.MeshToonMaterial({ color: 0xe7a3a8 });
-
-  const platform = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.25, 4.8), saltMaterial);
-  platform.position.y = 0.12;
-  platform.receiveShadow = true;
-  group.add(platform);
-
-  [
-    [-1.8, 0.8, -0.8, 1.5, 1.4, 1.7],
-    [0.1, 1.15, -0.65, 1.8, 2.1, 1.9],
-    [2.1, 0.65, -0.4, 1.25, 1.1, 1.4],
-  ].forEach(([x, y, z, width, height, depth]) => {
-    const building = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), saltMaterial);
-    building.position.set(x, y, z);
-    building.castShadow = true;
-    group.add(building);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(width * 0.7, 0.65, 4), darkMaterial);
-    roof.rotation.y = Math.PI / 4;
-    roof.position.set(x, y + height / 2 + 0.3, z);
-    group.add(roof);
-  });
-
-  [-1.7, 0, 1.7].forEach((x) => {
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 0.12, 28), brineMaterial);
-    basin.position.set(x, 0.3, 1.45);
-    group.add(basin);
-  });
-  return group;
-}
-
 function createPhotobioreactorStation() {
   const group = new THREE.Group();
   const frameMaterial = new THREE.MeshToonMaterial({ color: 0x0b3a34 });
@@ -1105,10 +1071,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     });
 
     const scenicFeatures = [
-      // The positive side of this opening bend folds back toward the road at
-      // t≈0.16, so the outpost platform used to cover that later segment.
-      // Put it on the outside of the bend where the whole footprint is clear.
-      { t: 0.055, offset: -13.2, object: createSaltworksOutpost(), scale: 0.68, turn: -0.12 },
       { t: 0.16, offset: 13, object: createPhotobioreactorStation(), scale: 0.72, turn: -0.1 },
       { t: 0.345, offset: -12.8, object: createLightArray(), scale: 0.74, turn: 0.12 },
       { t: 0.49, offset: 12.9, object: createWetLabBench(), scale: 0.71, turn: -0.1 },
