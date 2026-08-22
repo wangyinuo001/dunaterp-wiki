@@ -22,6 +22,8 @@
 /* Scroll-driven salt-flat route. The terminal interaction follows the split preview/content
    architecture of Bruno Simon's MIT-licensed Folio 2025 without reusing its artwork. */
 .duna-world{
+  --journey-progress:0;
+  --panel-progress:0;
   position:relative;
   inset:auto;
   min-height:0;

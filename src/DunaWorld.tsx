@@ -738,13 +738,12 @@ function addProp(
   scene.add(object);
 }
 
-function WikiTerminal({ panelProgress }: { panelProgress: number }) {
+function WikiTerminal() {
   const [activeKey, setActiveKey] = useState(panelGroups[0].key);
   const activeGroup = panelGroups.find((group) => group.key === activeKey) ?? panelGroups[0];
-  const style = { "--panel-progress": panelProgress } as CSSProperties;
 
   return (
-    <section className="wiki-terminal" style={style} aria-label="DunaTerp Wiki navigation panel">
+    <section className="wiki-terminal" aria-label="DunaTerp Wiki navigation panel">
       <nav className="terminal-tabs" aria-label="Wiki sections">
         {panelGroups.map((group) => (
           <button
@@ -860,7 +859,11 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       return;
     }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    const updatePixelRatio = () => {
+      const cap = window.innerWidth < 800 ? 1 : 1.35;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
+    };
+    updatePixelRatio();
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -885,7 +888,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const sun = new THREE.DirectionalLight(0xfff1ca, 4);
     sun.position.set(-18, 25, 12);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.camera.left = -28;
     sun.shadow.camera.right = 28;
     sun.shadow.camera.top = 28;
@@ -1061,6 +1064,8 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       velocity: THREE.Vector3;
       life: number;
     }> = [];
+    const impactBurstGeometry = new THREE.RingGeometry(0.18, 0.34, 18);
+    const impactParticleGeometry = new THREE.IcosahedronGeometry(0.11, 0);
     let collisionFeedback = 0;
     let collisionSide = 0;
 
@@ -1212,11 +1217,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z) + Math.PI;
     addProp(scene, curve, 0.985, 0, terminal, 1);
 
-    // Route fraction covered per second while catching up to the scroll target.
-    const FOLLOW_SPEED = 0.5;
+    // A damped spring preserves wheel/trackpad momentum without the abrupt
+    // start-stop motion caused by catching every scroll notch at fixed speed.
+    const MAX_FOLLOW_SPEED = 0.48;
+    const FOLLOW_STIFFNESS = 70;
+    const FOLLOW_DAMPING = 15;
     let targetProgress = 0.001;
     let currentProgress = 0.001;
-    let previousProgress = currentProgress;
+    let currentProgressVelocity = 0;
     let hasLeftStart = false;
     let disposed = false;
     let frameCount = 0;
@@ -1264,6 +1272,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const resize = () => {
       const width = host.clientWidth;
       const height = host.clientHeight;
+      updatePixelRatio();
       renderer.setSize(width, height);
       camera.aspect = width / Math.max(1, height);
       camera.updateProjectionMatrix();
@@ -1278,16 +1287,34 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       if (disposed) return;
       requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.04);
-      // Constant rate rather than exponential damping: damp() covers most of
-      // the gap immediately and then crawls, which reads as uneven speed.
       const remaining = targetProgress - currentProgress;
-      currentProgress += THREE.MathUtils.clamp(
-        remaining,
-        -FOLLOW_SPEED * delta,
-        FOLLOW_SPEED * delta,
+      currentProgressVelocity += (
+        remaining * FOLLOW_STIFFNESS
+        - currentProgressVelocity * FOLLOW_DAMPING
+      ) * delta;
+      currentProgressVelocity = THREE.MathUtils.clamp(
+        currentProgressVelocity,
+        -MAX_FOLLOW_SPEED,
+        MAX_FOLLOW_SPEED,
       );
-      const progressVelocity = (currentProgress - previousProgress) / Math.max(delta, 0.001);
-      previousProgress = currentProgress;
+      const nextProgress = currentProgress + currentProgressVelocity * delta;
+      if (
+        Math.sign(targetProgress - nextProgress) !== Math.sign(remaining)
+        && Math.abs(remaining) < 0.004
+      ) {
+        currentProgress = targetProgress;
+        currentProgressVelocity = 0;
+      } else {
+        currentProgress = THREE.MathUtils.clamp(nextProgress, 0.001, 0.995);
+      }
+      const progressVelocity = currentProgressVelocity;
+      const livePanelProgress = THREE.MathUtils.clamp(
+        (currentProgress - 0.958) / 0.034,
+        0,
+        1,
+      );
+      root.style.setProperty("--journey-progress", currentProgress.toFixed(5));
+      root.style.setProperty("--panel-progress", livePanelProgress.toFixed(5));
       const point = curve.getPointAt(currentProgress);
       const tangent = curve.getTangentAt(currentProgress).normalize();
       const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
@@ -1337,7 +1364,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         physicsImpacts = routePhysics.step(delta);
       }
 
-      physicsImpacts.forEach((impact) => {
+      physicsImpacts.forEach((impact, impactOrder) => {
         const actorIndex = miniAlgaeIndexes.get(impact.actor.object) ?? 0;
         const separation = impact.position.clone().sub(vehicleGroundPosition);
         separation.y = 0;
@@ -1359,6 +1386,11 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         // Folio 2025 View.js uses a damped roll spring with collision kicks.
         cameraRollVelocity += hitSide * forceRatio * 0.9;
 
+        // Four nearby cells can contact in the same frame. Their rigid-body
+        // response remains individual, while VFX are capped to avoid a burst
+        // of short-lived geometries and draw calls stalling that frame.
+        if (impactOrder >= 2) return;
+
         const burstMaterial = new THREE.MeshBasicMaterial({
           color: actorIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
           transparent: true,
@@ -1366,17 +1398,17 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
           side: THREE.DoubleSide,
           depthWrite: false,
         });
-        const burst = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.34, 24), burstMaterial);
+        const burst = new THREE.Mesh(impactBurstGeometry, burstMaterial);
         burst.position.copy(impact.position);
         burst.position.y += 0.18;
         burst.renderOrder = 4;
         scene.add(burst);
         impactBursts.push({ mesh: burst, life: 0 });
 
-        for (let particleIndex = 0; particleIndex < 7; particleIndex += 1) {
-          const angle = (particleIndex / 7) * Math.PI * 2 + actorIndex * 0.41;
+        for (let particleIndex = 0; particleIndex < 4; particleIndex += 1) {
+          const angle = (particleIndex / 4) * Math.PI * 2 + actorIndex * 0.41;
           const particle = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(0.09 + (particleIndex % 3) * 0.025, 0),
+            impactParticleGeometry,
             new THREE.MeshBasicMaterial({
               color: particleIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
               transparent: true,
@@ -1385,6 +1417,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
             }),
           );
           particle.position.copy(impact.position);
+          particle.scale.setScalar((0.09 + (particleIndex % 3) * 0.025) / 0.11);
           particle.renderOrder = 3;
           scene.add(particle);
           impactParticles.push({
@@ -1419,7 +1452,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         burst.mesh.material.opacity = Math.max(0, 1 - burstProgress) * 0.9;
         if (burstProgress >= 1) {
           scene.remove(burst.mesh);
-          burst.mesh.geometry.dispose();
           burst.mesh.material.dispose();
           impactBursts.splice(burstIndex, 1);
         }
@@ -1437,7 +1469,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         particle.mesh.material.opacity = Math.max(0, 1 - particleProgress);
         if (particleProgress >= 1) {
           scene.remove(particle.mesh);
-          particle.mesh.geometry.dispose();
           particle.mesh.material.dispose();
           impactParticles.splice(particleIndex, 1);
         }
@@ -1446,7 +1477,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.995);
       const shotPhase = currentProgress * Math.PI * 4;
       const speedRatio = THREE.MathUtils.clamp(
-        Math.abs(progressVelocity) / FOLLOW_SPEED,
+        Math.abs(progressVelocity) / MAX_FOLLOW_SPEED,
         0,
         1,
       );
@@ -1496,7 +1527,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       collisionSide *= Math.exp(-6.4 * delta);
 
       frameCount += 1;
-      if (frameCount % 4 === 0) setProgress(currentProgress);
+      if (frameCount % 6 === 0) setProgress(currentProgress);
       renderer.render(scene, camera);
     };
     animate();
@@ -1505,6 +1536,8 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       disposed = true;
       physicsCancelled = true;
       routePhysics?.dispose();
+      impactBurstGeometry.dispose();
+      impactParticleGeometry.dispose();
       window.removeEventListener("scroll", updateScrollProgress);
       window.removeEventListener("resize", resize);
       renderer.dispose();
@@ -1523,12 +1556,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     );
   }
 
-  const panelProgress = Math.max(0, Math.min(1, (progress - 0.958) / 0.034));
-  const journeyStyle = {
-    "--journey-progress": progress,
-    "--panel-progress": panelProgress,
-  } as CSSProperties;
-
   const beginJourney = () => {
     setStarted(true);
     const top = journey.current?.offsetTop ?? 0;
@@ -1539,7 +1566,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     <main
       ref={journey}
       className={`duna-world${openingComplete ? " is-opening-complete" : ""}${started || progress > 0.025 ? " is-started" : ""}${progress > 0.9 ? " is-arriving" : ""}${progress > 0.982 ? " is-panel-ready" : ""}`}
-      style={journeyStyle}
     >
       {!openingComplete && (
         <div className="duna-opening" role="status" aria-label="DunaTerp opening sequence">
@@ -1591,7 +1617,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
           ))}
         </div>
 
-        <WikiTerminal panelProgress={panelProgress} />
+        <WikiTerminal />
 
         <button
           className="restart-drive"
