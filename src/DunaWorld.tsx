@@ -290,7 +290,7 @@ function createRoadSign(chapter: (typeof chapters)[number]) {
 
   const face = new THREE.Mesh(
     new THREE.PlaneGeometry(7.3, 2.82),
-    new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+    new THREE.MeshBasicMaterial({ map: texture }),
   );
   face.position.set(0, 3.72, 0.1);
   group.add(face);
@@ -1044,13 +1044,12 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     let collisionFeedback = 0;
     let collisionSide = 0;
 
-    const roadSigns: Array<{ object: THREE.Group }> = [];
     chapters.forEach((chapter, index) => {
       const sign = createRoadSign(chapter);
       const side = index % 2 === 0 ? -1 : 1;
-      addProp(scene, curve, chapter.t, side * 6.8, sign, 0.82);
-      // Orientation is re-aimed at the camera every frame; see the animate loop.
-      roadSigns.push({ object: sign });
+      addProp(scene, curve, chapter.t, side * 10.2, sign, 0.58);
+      const signTangent = curve.getTangentAt(chapter.t).normalize();
+      sign.rotation.y = Math.atan2(signTangent.x, signTangent.z) + Math.PI;
     });
 
     const scenicFeatures = [
@@ -1191,7 +1190,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const travelTarget = new THREE.Vector3();
     const travelCamera = new THREE.Vector3();
     const cameraImpactOffset = new THREE.Vector3();
-    const signWorldPosition = new THREE.Vector3();
     const vehicleGroundPosition = new THREE.Vector3();
     const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 3.35, 0));
     const terminalCamera = terminal.position
@@ -1276,16 +1274,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         landingRing.scale.setScalar(landingScale);
         landingRingMaterial.opacity = (1 - landingLife) * 0.82;
       }
-
-      roadSigns.forEach((sign) => {
-        // Turn on the vertical axis only, so the sign faces the camera without
-        // tipping as the camera rises and falls.
-        sign.object.getWorldPosition(signWorldPosition);
-        sign.object.rotation.y = Math.atan2(
-          camera.position.x - signWorldPosition.x,
-          camera.position.z - signWorldPosition.z,
-        );
-      });
 
       miniAlgae.forEach((actor, actorIndex) => {
         if (currentProgress < 0.025 && actor.hit) {
