@@ -1529,11 +1529,15 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         <div ref={mount} className="duna-stage" aria-label="A scroll-driven 3D journey through the DunaTerp project" />
 
         <section className="world-intro">
-          <p>SCU–CHINA · iGEM 2026</p>
-          <h1>Scroll into<br /><i>Dunaliella.</i></h1>
-          <p>A continuous journey from hypersaline water to a controllable carotenoid platform.</p>
-          <button type="button" onClick={beginJourney}>Begin the journey <span>↓</span></button>
-          <small>SCROLL DOWN · TRACKPAD · SWIPE</small>
+          <div className="intro-lockup">
+            <p>SCU–CHINA · iGEM 2026</p>
+            <h1>Duna<i>Terp.</i></h1>
+            <p>From a salt-born cell to four carotenoid routes.</p>
+          </div>
+          <div className="intro-start">
+            <button type="button" onClick={beginJourney}>Start the route <span>↓</span></button>
+            <span>Scroll · trackpad · swipe</span>
+          </div>
         </section>
 
         <div className="world-route" aria-label={`Journey progress ${Math.round(progress * 100)} percent`}>

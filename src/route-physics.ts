@@ -84,15 +84,15 @@ export class RoutePhysics {
         RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(home.x, home.y, home.z)
           .setRotation(object.quaternion)
-          .setLinearDamping(0.18)
-          .setAngularDamping(0.12)
+          .setLinearDamping(0.9)
+          .setAngularDamping(0.48)
           .setCcdEnabled(true),
       );
       const collider = this.world.createCollider(
         RAPIER.ColliderDesc.ball(0.48)
-          .setDensity(0.72)
-          .setFriction(0.62)
-          .setRestitution(0.58)
+          .setDensity(1)
+          .setFriction(0.76)
+          .setRestitution(0.38)
           .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
           .setContactForceEventThreshold(0.25),
         body,
@@ -148,16 +148,20 @@ export class RoutePhysics {
       const dx = translation.x - vehicleTranslation.x;
       const dz = translation.z - vehicleTranslation.z;
       const distance = Math.max(0.001, Math.hypot(dx, dz));
-      const forceRatio = THREE.MathUtils.clamp(force / 120, 0.65, 1.35);
-      actor.body.applyImpulse({
-        x: (dx / distance) * 2.2 * forceRatio,
-        y: 2.65 * forceRatio,
-        z: (dz / distance) * 2.2 * forceRatio,
+      const forceRatio = THREE.MathUtils.clamp(force / 120, 0.8, 1.1);
+      const vehicleVelocity = this.vehicleBody.linvel();
+      const vehicleSpeed = Math.max(0.001, Math.hypot(vehicleVelocity.x, vehicleVelocity.z));
+      // The contact remains physically detected, but its outgoing velocity is
+      // bounded so algae hop to the roadside instead of leaving the scene.
+      actor.body.setLinvel({
+        x: (dx / distance) * 1.75 * forceRatio + (vehicleVelocity.x / vehicleSpeed) * 0.55,
+        y: 4.6 * forceRatio,
+        z: (dz / distance) * 1.75 * forceRatio + (vehicleVelocity.z / vehicleSpeed) * 0.55,
       }, true);
-      actor.body.applyTorqueImpulse({
-        x: (dz / distance) * 0.72 * forceRatio,
-        y: (dx >= 0 ? -1 : 1) * 0.88 * forceRatio,
-        z: -(dx / distance) * 0.72 * forceRatio,
+      actor.body.setAngvel({
+        x: (dz / distance) * 3.2 * forceRatio,
+        y: (dx >= 0 ? -1 : 1) * 3 * forceRatio,
+        z: -(dx / distance) * 3.2 * forceRatio,
       }, true);
       impacts.push({
         actor,

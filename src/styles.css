@@ -49,6 +49,67 @@
   position:absolute;
   inset:0;
 }
+.duna-world .world-intro{
+  display:block;
+  padding:0;
+  background:
+    linear-gradient(90deg,rgba(3,28,25,.7) 0,rgba(3,28,25,.28) 28%,transparent 53%),
+    linear-gradient(0deg,rgba(3,28,25,.28),transparent 28%);
+  pointer-events:none;
+}
+.intro-lockup{
+  position:absolute;
+  left:clamp(1.4rem,5vw,5.5rem);
+  top:clamp(7rem,16vh,10rem);
+  width:min(32rem,42vw);
+  text-shadow:0 .18rem 1.4rem rgba(1,22,19,.72);
+}
+.world-intro .intro-lockup>p:first-child{
+  margin:0 0 .8rem;
+  color:var(--lime);
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.18em;
+}
+.world-intro .intro-lockup h1{
+  margin:0;
+  font-size:clamp(4rem,8vw,7.4rem);
+  line-height:.8;
+}
+.world-intro .intro-lockup h1 i{
+  color:#f48736;
+}
+.world-intro .intro-lockup h1+p{
+  max-width:24rem;
+  margin:1.25rem 0 0;
+  color:rgba(255,255,255,.82);
+  font-size:clamp(.82rem,1.15vw,1rem);
+  line-height:1.5;
+}
+.intro-start{
+  position:absolute;
+  left:50%;
+  bottom:clamp(3.2rem,7vh,5.2rem);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:.7rem;
+  transform:translateX(-50%);
+  pointer-events:auto;
+}
+.world-intro .intro-start button{
+  min-width:12.5rem;
+  justify-content:space-between;
+  box-shadow:0 .8rem 2.4rem rgba(2,24,21,.28);
+}
+.intro-start>span{
+  color:rgba(255,255,255,.72);
+  font-size:.54rem;
+  font-weight:900;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  text-shadow:0 .12rem .7rem rgba(1,22,19,.8);
+}
 .duna-world .world-intro button span{
   font-size:1.2rem;
 }
@@ -429,6 +490,36 @@
 }
 
 @media(max-width:800px){
+  .duna-world .world-intro{
+    background:
+      linear-gradient(0deg,rgba(3,28,25,.72) 0,rgba(3,28,25,.2) 48%,transparent 72%);
+  }
+  .intro-lockup{
+    left:1.35rem;
+    right:1.35rem;
+    top:auto;
+    bottom:10.5rem;
+    width:auto;
+  }
+  .world-intro .intro-lockup h1{
+    font-size:clamp(4.2rem,19vw,6.4rem);
+  }
+  .world-intro .intro-lockup h1+p{
+    max-width:18rem;
+  }
+  .intro-start{
+    left:1.35rem;
+    right:1.35rem;
+    bottom:3.1rem;
+    align-items:stretch;
+    transform:none;
+  }
+  .world-intro .intro-start button{
+    width:100%;
+  }
+  .intro-start>span{
+    text-align:center;
+  }
   .duna-scroll-chapter,
   .duna-scroll-chapter.is-right{
     align-items:end;
