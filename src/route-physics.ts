@@ -1,0 +1,200 @@
+/**
+ * Scroll-route physics adapted from Bruno Simon's Folio 2025 physics/object loop.
+ * Original project: https://github.com/brunosimon/folio-2025
+ * Copyright (c) 2025 Bruno Simon — MIT License.
+ *
+ * DunaTerp keeps its scroll-constrained route, but uses the same core pattern:
+ * Rapier rigid bodies, an event queue for contact forces, and a visual/physical
+ * object registry synchronised after every physics step.
+ */
+import * as RAPIER from "@dimforge/rapier3d-compat";
+import * as THREE from "three";
+
+export type RoutePhysicsActor = {
+  object: THREE.Object3D;
+  home: THREE.Vector3;
+  homeRotation: THREE.Quaternion;
+  body: RAPIER.RigidBody;
+  collider: RAPIER.Collider;
+  hit: boolean;
+};
+
+export type RouteImpact = {
+  actor: RoutePhysicsActor;
+  force: number;
+  position: THREE.Vector3;
+};
+
+export class RoutePhysics {
+  private world: RAPIER.World;
+  private eventQueue: RAPIER.EventQueue;
+  private vehicleBody: RAPIER.RigidBody;
+  private vehicleCollider: RAPIER.Collider;
+  private colliderActors = new Map<number, RoutePhysicsActor>();
+  readonly actors: RoutePhysicsActor[] = [];
+
+  static async create(
+    vehiclePosition: THREE.Vector3,
+    vehicleYaw: number,
+    algae: Array<{ object: THREE.Object3D; home: THREE.Vector3 }>,
+  ) {
+    await RAPIER.init();
+    return new RoutePhysics(vehiclePosition, vehicleYaw, algae);
+  }
+
+  private constructor(
+    vehiclePosition: THREE.Vector3,
+    vehicleYaw: number,
+    algae: Array<{ object: THREE.Object3D; home: THREE.Vector3 }>,
+  ) {
+    // Folio 2025 Physics.js uses a Rapier world plus a contact-force event
+    // queue. The same ordering is retained here in a smaller Wiki-safe loop.
+    this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    this.eventQueue = new RAPIER.EventQueue(true);
+    this.world.timestep = 1 / 60;
+
+    const floorBody = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.12, 0),
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(55, 0.12, 55)
+        .setFriction(0.82)
+        .setRestitution(0.12),
+      floorBody,
+    );
+
+    const rotation = this.yawQuaternion(vehicleYaw);
+    this.vehicleBody = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased()
+        .setTranslation(vehiclePosition.x, 0.72, vehiclePosition.z)
+        .setRotation(rotation),
+    );
+    this.vehicleCollider = this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(0.82, 0.48, 1.18)
+        .setTranslation(0, 0.05, 0)
+        .setFriction(0.55)
+        .setRestitution(0.42)
+        .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
+        .setContactForceEventThreshold(0.25),
+      this.vehicleBody,
+    );
+
+    algae.forEach(({ object, home }) => {
+      const body = this.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(home.x, home.y, home.z)
+          .setRotation(object.quaternion)
+          .setLinearDamping(0.18)
+          .setAngularDamping(0.12)
+          .setCcdEnabled(true),
+      );
+      const collider = this.world.createCollider(
+        RAPIER.ColliderDesc.ball(0.48)
+          .setDensity(0.72)
+          .setFriction(0.62)
+          .setRestitution(0.58)
+          .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
+          .setContactForceEventThreshold(0.25),
+        body,
+      );
+      const actor: RoutePhysicsActor = {
+        object,
+        home: home.clone(),
+        homeRotation: object.quaternion.clone(),
+        body,
+        collider,
+        hit: false,
+      };
+      this.actors.push(actor);
+      this.colliderActors.set(collider.handle, actor);
+    });
+  }
+
+  private yawQuaternion(yaw: number) {
+    const halfYaw = yaw * 0.5;
+    return { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) };
+  }
+
+  moveVehicle(position: THREE.Vector3, yaw: number, height: number) {
+    this.vehicleBody.setNextKinematicTranslation({
+      x: position.x,
+      y: 0.72 + height,
+      z: position.z,
+    });
+    this.vehicleBody.setNextKinematicRotation(this.yawQuaternion(yaw));
+  }
+
+  step(delta: number) {
+    this.world.timestep = Math.min(1 / 30, Math.max(1 / 120, delta));
+    this.world.step(this.eventQueue);
+
+    const impacts: RouteImpact[] = [];
+    this.eventQueue.drainContactForceEvents((event) => {
+      const collider1 = this.world.getCollider(event.collider1());
+      const collider2 = this.world.getCollider(event.collider2());
+      const vehicleHandle = this.vehicleCollider.handle;
+      const actor = collider1.handle === vehicleHandle
+        ? this.colliderActors.get(collider2.handle)
+        : collider2.handle === vehicleHandle
+          ? this.colliderActors.get(collider1.handle)
+          : undefined;
+      if (!actor) return;
+
+      const force = event.maxForceMagnitude();
+      if (force < 0.25 || actor.hit) return;
+      actor.hit = true;
+      const translation = actor.body.translation();
+      const vehicleTranslation = this.vehicleBody.translation();
+      const dx = translation.x - vehicleTranslation.x;
+      const dz = translation.z - vehicleTranslation.z;
+      const distance = Math.max(0.001, Math.hypot(dx, dz));
+      const forceRatio = THREE.MathUtils.clamp(force / 120, 0.65, 1.35);
+      actor.body.applyImpulse({
+        x: (dx / distance) * 2.2 * forceRatio,
+        y: 2.65 * forceRatio,
+        z: (dz / distance) * 2.2 * forceRatio,
+      }, true);
+      actor.body.applyTorqueImpulse({
+        x: (dz / distance) * 0.72 * forceRatio,
+        y: (dx >= 0 ? -1 : 1) * 0.88 * forceRatio,
+        z: -(dx / distance) * 0.72 * forceRatio,
+      }, true);
+      impacts.push({
+        actor,
+        force,
+        position: new THREE.Vector3(translation.x, translation.y, translation.z),
+      });
+    });
+
+    this.actors.forEach((actor) => {
+      const position = actor.body.translation();
+      const rotation = actor.body.rotation();
+      actor.object.position.set(position.x, position.y, position.z);
+      actor.object.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+      if (position.y < -4) this.resetActor(actor);
+    });
+
+    return impacts;
+  }
+
+  resetActor(actor: RoutePhysicsActor) {
+    actor.body.setTranslation(actor.home, false);
+    actor.body.setRotation(actor.homeRotation, false);
+    actor.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+    actor.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+    actor.body.resetForces(false);
+    actor.body.resetTorques(false);
+    actor.hit = false;
+    actor.object.position.copy(actor.home);
+    actor.object.quaternion.copy(actor.homeRotation);
+  }
+
+  resetAll() {
+    this.actors.forEach((actor) => this.resetActor(actor));
+  }
+
+  dispose() {
+    this.eventQueue.free();
+    this.world.free();
+  }
+}

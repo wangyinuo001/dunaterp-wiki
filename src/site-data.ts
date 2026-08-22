@@ -129,7 +129,7 @@ export const pages: Record<string, WikiPage> = {
     sections: [
       { title: "Team work", body: "Team input required: record who designed, built, tested, analysed, modelled, documented and reviewed each project component." },
       { title: "External support", body: "Credit facilities, mentors, donated materials, prior teams, software, datasets and every third-party visual with source and licence." },
-      { title: "Website inspiration", body: "The vehicle input, follow-camera, route-zone and interactive-point architecture intentionally references Bruno Simon's Folio 2025, released under the MIT License. DunaTerp uses independently written project-specific code and procedural geometry; no Folio artwork, models, audio or textures are redistributed." },
+      { title: "Website physics and interaction", body: "The Rapier physics world, contact-force event loop, dynamic object synchronisation and damped follow-camera in DunaTerp are adapted from Bruno Simon's Folio 2025 under the MIT License. The scroll-constrained route, Dunaliella geometry, scientific landmarks, text and interface are project-specific; no Folio models, artwork, audio or textures are redistributed. Full notice: THIRD_PARTY_NOTICES.md in the Wiki repository." },
     ],
   },
   "responsible-ai": {

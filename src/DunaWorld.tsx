@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import * as THREE from "three";
+import { RoutePhysics } from "./route-physics";
 
 type HeaderProps = { light?: boolean };
 
@@ -990,12 +991,8 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
     const miniAlgae: Array<{
       object: THREE.Group;
-      t: number;
       home: THREE.Vector3;
-      velocity: THREE.Vector3;
-      angular: THREE.Vector3;
       collidable: boolean;
-      hit: boolean;
     }> = [];
     const algaeClusterPoints = [0.13, 0.34, 0.51, 0.68, 0.83];
     let miniIndex = 0;
@@ -1021,16 +1018,30 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         scene.add(object);
         miniAlgae.push({
           object,
-          t,
           home: object.position.clone(),
-          velocity: new THREE.Vector3(),
-          angular: new THREE.Vector3(),
           collidable,
-          hit: false,
         });
         miniIndex += 1;
       }
     });
+
+    const physicsStart = curve.getPointAt(0.001);
+    const physicsStartTangent = curve.getTangentAt(0.001).normalize();
+    let routePhysics: RoutePhysics | null = null;
+    let physicsCancelled = false;
+    void RoutePhysics.create(
+      physicsStart,
+      Math.atan2(physicsStartTangent.x, physicsStartTangent.z),
+      miniAlgae
+        .filter((actor) => actor.collidable)
+        .map((actor) => ({ object: actor.object, home: actor.home })),
+    ).then((physics) => {
+      if (physicsCancelled) physics.dispose();
+      else routePhysics = physics;
+    });
+    const miniAlgaeIndexes = new Map<THREE.Object3D, number>(
+      miniAlgae.map((actor, index) => [actor.object, index]),
+    );
 
     const impactBursts: Array<{
       mesh: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
@@ -1183,14 +1194,19 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     let targetProgress = 0.001;
     let currentProgress = 0.001;
     let previousProgress = currentProgress;
+    let hasLeftStart = false;
     let disposed = false;
     let frameCount = 0;
     const cameraTarget = new THREE.Vector3();
     const cameraPosition = new THREE.Vector3();
+    const desiredCameraTarget = new THREE.Vector3();
+    const desiredCameraPosition = new THREE.Vector3();
     const travelTarget = new THREE.Vector3();
     const travelCamera = new THREE.Vector3();
     const cameraImpactOffset = new THREE.Vector3();
     const vehicleGroundPosition = new THREE.Vector3();
+    let cameraRoll = 0;
+    let cameraRollVelocity = 0;
     const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 3.35, 0));
     const terminalCamera = terminal.position
       .clone()
@@ -1210,6 +1226,11 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         .addScaledVector(startTangent, 4.2)
         .add(new THREE.Vector3(0, 0.8, 0)),
     );
+    cameraPosition.copy(camera.position);
+    cameraTarget
+      .copy(startPoint)
+      .addScaledVector(startTangent, 4.2)
+      .add(new THREE.Vector3(0, 0.8, 0));
 
     const updateScrollProgress = () => {
       const rootTop = root.getBoundingClientRect().top + window.scrollY;
@@ -1244,7 +1265,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       );
       const progressVelocity = (currentProgress - previousProgress) / Math.max(delta, 0.001);
       previousProgress = currentProgress;
-
       const point = curve.getPointAt(currentProgress);
       const tangent = curve.getTangentAt(currentProgress).normalize();
       const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
@@ -1275,128 +1295,90 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         landingRingMaterial.opacity = (1 - landingLife) * 0.82;
       }
 
+      if (currentProgress > 0.04) hasLeftStart = true;
+      if (routePhysics && hasLeftStart && currentProgress < 0.025) {
+        routePhysics.resetAll();
+        hasLeftStart = false;
+      }
+
+      let physicsImpacts: ReturnType<RoutePhysics["step"]> = [];
+      if (routePhysics) {
+        routePhysics.moveVehicle(
+          vehicleGroundPosition,
+          Math.atan2(tangent.x, tangent.z),
+          dropHeight,
+        );
+        physicsImpacts = routePhysics.step(delta);
+      }
+
+      // Shoulder algae remain ambient scenery. Road algae are synchronised
+      // from Rapier by RoutePhysics after each physics step.
       miniAlgae.forEach((actor, actorIndex) => {
-        if (currentProgress < 0.025 && actor.hit) {
-          actor.hit = false;
-          actor.object.position.copy(actor.home);
-          actor.velocity.set(0, 0, 0);
-          actor.angular.set(0, 0, 0);
-        }
+        if (actor.collidable && routePhysics) return;
+        actor.object.position.y = actor.home.y + Math.sin(introTime * 2.4 + actorIndex * 0.83) * 0.055;
+        actor.object.rotation.y += delta * (0.35 + (actorIndex % 3) * 0.12);
+      });
 
-        if (!actor.hit) {
-          actor.object.position.y = actor.home.y + Math.sin(introTime * 2.4 + actorIndex * 0.83) * 0.055;
-          actor.object.rotation.y += delta * (0.35 + (actorIndex % 3) * 0.12);
+      physicsImpacts.forEach((impact) => {
+        const actorIndex = miniAlgaeIndexes.get(impact.actor.object) ?? 0;
+        const separation = impact.position.clone().sub(vehicleGroundPosition);
+        separation.y = 0;
+        const hitSide = Math.sign(separation.dot(side)) || (actorIndex % 2 === 0 ? -1 : 1);
+        const pushDirection = separation.lengthSq() > 0.001
+          ? separation.normalize()
+          : side.clone().multiplyScalar(hitSide);
+        const forceRatio = THREE.MathUtils.clamp(impact.force / 120, 0.7, 1.3);
 
-          const separation = actor.object.position.clone().sub(vehicleGroundPosition);
-          separation.y = 0;
-          const collisionDistance = separation.length();
-          if (actor.collidable
-            && Math.abs(currentProgress - actor.t) < 0.022
-            && collisionDistance < 1.35) {
-            actor.hit = true;
-            const hitSide = Math.sign(separation.dot(side)) || (actorIndex % 2 === 0 ? -1 : 1);
-            const pushDirection = side.clone().multiplyScalar(hitSide);
-            const forwardSign = Math.sign(progressVelocity) || 1;
-            const speedRatio = THREE.MathUtils.clamp(
-              Math.abs(progressVelocity) / FOLLOW_SPEED,
-              0.35,
-              1,
-            );
-            const contactStrength = THREE.MathUtils.clamp(
-              (1.45 - collisionDistance) / 0.9,
-              0.55,
-              1,
-            );
+        collisionFeedback = Math.min(
+          1.35,
+          Math.max(collisionFeedback, 0.82 + forceRatio * 0.22),
+        );
+        collisionSide = THREE.MathUtils.clamp(
+          collisionSide * 0.35 + hitSide * forceRatio,
+          -1,
+          1,
+        );
+        // Folio 2025 View.js uses a damped roll spring with collision kicks.
+        cameraRollVelocity += hitSide * forceRatio * 0.9;
 
-            // Folio 2025 Leaves.js force structure, retuned for CPU-driven algae:
-            // a directional vehicle impulse plus a strong radial impulse. The
-            // radial component is deliberately dominant so the object leaves
-            // the follow-camera's centre line instead of travelling with it.
-            actor.velocity
-              .copy(pushDirection)
-              .multiplyScalar((5.4 + speedRatio * 2.8) * contactStrength)
-              .addScaledVector(
-                tangent,
-                forwardSign * (2.1 + speedRatio * 2.2) * contactStrength,
-              );
-            actor.velocity.y = (5.2 + speedRatio * 2.2) * contactStrength
-              + (actorIndex % 3) * 0.2;
-            const planarSpeed = Math.hypot(actor.velocity.x, actor.velocity.z);
-            actor.angular.set(
-              5.5 + planarSpeed * 0.65 + (actorIndex % 3),
-              -hitSide * (7.5 + planarSpeed * 0.72),
-              hitSide * (5.2 + planarSpeed * 0.58 + (actorIndex % 4) * 0.4),
-            );
+        const burstMaterial = new THREE.MeshBasicMaterial({
+          color: actorIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const burst = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.34, 24), burstMaterial);
+        burst.position.copy(impact.position);
+        burst.position.y += 0.18;
+        burst.renderOrder = 4;
+        scene.add(burst);
+        impactBursts.push({ mesh: burst, life: 0 });
 
-            collisionFeedback = Math.min(
-              1.35,
-              Math.max(collisionFeedback, 0.95) + 0.12,
-            );
-            collisionSide = THREE.MathUtils.clamp(
-              collisionSide * 0.35 + hitSide * 0.85,
-              -1,
-              1,
-            );
-
-            const burstMaterial = new THREE.MeshBasicMaterial({
-              color: actorIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
+        for (let particleIndex = 0; particleIndex < 7; particleIndex += 1) {
+          const angle = (particleIndex / 7) * Math.PI * 2 + actorIndex * 0.41;
+          const particle = new THREE.Mesh(
+            new THREE.IcosahedronGeometry(0.09 + (particleIndex % 3) * 0.025, 0),
+            new THREE.MeshBasicMaterial({
+              color: particleIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
               transparent: true,
-              opacity: 0.9,
-              side: THREE.DoubleSide,
+              opacity: 1,
               depthWrite: false,
-            });
-            const burst = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.34, 24), burstMaterial);
-            burst.position.copy(actor.object.position);
-            burst.position.y = 0.82;
-            burst.renderOrder = 4;
-            scene.add(burst);
-            impactBursts.push({ mesh: burst, life: 0 });
-
-            for (let particleIndex = 0; particleIndex < 7; particleIndex += 1) {
-              const angle = (particleIndex / 7) * Math.PI * 2 + actorIndex * 0.41;
-              const particle = new THREE.Mesh(
-                new THREE.IcosahedronGeometry(0.09 + (particleIndex % 3) * 0.025, 0),
-                new THREE.MeshBasicMaterial({
-                  color: particleIndex % 2 === 0 ? 0xcaff61 : 0xff9b42,
-                  transparent: true,
-                  opacity: 1,
-                  depthWrite: false,
-                }),
-              );
-              particle.position.copy(actor.object.position);
-              particle.position.y = 0.72;
-              particle.renderOrder = 3;
-              scene.add(particle);
-              impactParticles.push({
-                mesh: particle,
-                velocity: pushDirection
-                  .clone()
-                  .multiplyScalar(1.7 + (particleIndex % 3) * 0.35)
-                  .addScaledVector(side, Math.cos(angle) * 1.8)
-                  .addScaledVector(tangent, Math.sin(angle) * 1.15)
-                  .add(new THREE.Vector3(0, 2.2 + (particleIndex % 4) * 0.42, 0)),
-                life: 0,
-              });
-            }
-          }
-        } else {
-          actor.velocity.y -= 11.2 * delta;
-          const planarDamping = Math.exp(-0.72 * delta);
-          actor.velocity.x *= planarDamping;
-          actor.velocity.z *= planarDamping;
-          actor.object.position.addScaledVector(actor.velocity, delta);
-          actor.object.rotation.x += actor.angular.x * delta;
-          actor.object.rotation.y += actor.angular.y * delta;
-          actor.object.rotation.z += actor.angular.z * delta;
-          actor.angular.multiplyScalar(Math.exp(-0.72 * delta));
-
-          if (actor.object.position.y < 0.48) {
-            actor.object.position.y = 0.48;
-            if (actor.velocity.y < -0.75) actor.velocity.y *= -0.34;
-            else actor.velocity.y = 0;
-            actor.velocity.x *= 0.68;
-            actor.velocity.z *= 0.68;
-          }
+            }),
+          );
+          particle.position.copy(impact.position);
+          particle.renderOrder = 3;
+          scene.add(particle);
+          impactParticles.push({
+            mesh: particle,
+            velocity: pushDirection
+              .clone()
+              .multiplyScalar((1.7 + (particleIndex % 3) * 0.35) * forceRatio)
+              .addScaledVector(side, Math.cos(angle) * 1.8)
+              .addScaledVector(tangent, Math.sin(angle) * 1.15)
+              .add(new THREE.Vector3(0, 2.2 + (particleIndex % 4) * 0.42, 0)),
+            life: 0,
+          });
         }
       });
 
@@ -1445,9 +1427,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
       const arriving = THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.995);
       const shotPhase = currentProgress * Math.PI * 4;
+      const speedRatio = THREE.MathUtils.clamp(
+        Math.abs(progressVelocity) / FOLLOW_SPEED,
+        0,
+        1,
+      );
       const sideOffset = Math.sin(shotPhase * 0.82) * 0.72;
-      const cameraHeight = 5.5 + Math.cos(shotPhase * 0.72) * 0.45;
-      const cameraTrail = 8.8 + Math.sin(shotPhase * 0.55) * 0.45;
+      const cameraHeight = 5.5 + Math.cos(shotPhase * 0.72) * 0.45 + speedRatio * 0.2;
+      const cameraTrail = 8.8 + Math.sin(shotPhase * 0.55) * 0.45 + speedRatio * 1.15;
       const cellReveal = THREE.MathUtils.smoothstep(currentProgress, 0.17, 0.23)
         * (1 - THREE.MathUtils.smoothstep(currentProgress, 0.3, 0.36));
       travelTarget
@@ -1460,9 +1447,13 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         .addScaledVector(tangent, -cameraTrail)
         .addScaledVector(side, sideOffset)
         .add(new THREE.Vector3(0, cameraHeight, 0));
-      cameraTarget.lerpVectors(travelTarget, terminalTarget, arriving);
-      cameraPosition.lerpVectors(travelCamera, terminalCamera, arriving);
-      camera.position.lerp(cameraPosition, 0.055);
+      desiredCameraTarget.lerpVectors(travelTarget, terminalTarget, arriving);
+      desiredCameraPosition.lerpVectors(travelCamera, terminalCamera, arriving);
+      // Delta-aware focus and position easing follows Folio 2025's smoothed
+      // focus-point pattern while keeping the camera behind the route vehicle.
+      cameraTarget.lerp(desiredCameraTarget, 1 - Math.exp(-8.5 * delta));
+      cameraPosition.lerp(desiredCameraPosition, 1 - Math.exp(-5.2 * delta));
+      camera.position.copy(cameraPosition);
       cameraImpactOffset.set(
         Math.sin(introTime * 91) * impactPulse * impactPulse * 0.2,
         Math.cos(introTime * 73) * impactPulse * impactPulse * 0.13,
@@ -1472,9 +1463,12 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         .addScaledVector(side, cameraImpactOffset.x)
         .addScaledVector(tangent, cameraImpactOffset.z);
       camera.position.y += cameraImpactOffset.y;
-      camera.fov = THREE.MathUtils.lerp(48, 40, arriving) + impactPulse * 3.2;
+      camera.fov = THREE.MathUtils.lerp(48 + speedRatio * 2.2, 40, arriving) + impactPulse * 3.2;
       camera.updateProjectionMatrix();
       camera.lookAt(cameraTarget);
+      cameraRollVelocity += (-cameraRoll * 100 - cameraRollVelocity * 11) * delta;
+      cameraRoll += cameraRollVelocity * delta;
+      camera.rotation.z += cameraRoll;
 
       cell.rotation.y += delta * 0.28;
       helix.rotation.y += delta * 0.42;
@@ -1491,6 +1485,8 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
     return () => {
       disposed = true;
+      physicsCancelled = true;
+      routePhysics?.dispose();
       window.removeEventListener("scroll", updateScrollProgress);
       window.removeEventListener("resize", resize);
       renderer.dispose();
