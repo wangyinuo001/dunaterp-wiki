@@ -218,92 +218,73 @@ function createTerminalScreenTexture() {
   return texture;
 }
 
-function wrapCanvasText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxLines: number,
-) {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let line = "";
+const routeLetterPatterns: Record<string, string[]> = {
+  D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  N: ["10001", "11001", "11001", "10101", "10011", "10011", "10001"],
+  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  P: ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+};
 
-  for (const word of words) {
-    const testLine = line ? `${line} ${word}` : word;
-    if (context.measureText(testLine).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-      if (lines.length === maxLines - 1) break;
-    } else {
-      line = testLine;
-    }
-  }
-  if (line && lines.length < maxLines) lines.push(line);
-  return lines;
-}
-
-function createRoadSign(chapter: (typeof chapters)[number]) {
+function createRouteLetter(letter: string, color: number, index: number) {
   const group = new THREE.Group();
-  const canvas = document.createElement("canvas");
-  canvas.width = 1200;
-  canvas.height = 480;
-  const context = canvas.getContext("2d")!;
-
-  context.fillStyle = "#082c27";
-  context.roundRect(18, 18, 1164, 444, 54);
-  context.fill();
-  context.strokeStyle = chapter.c;
-  context.lineWidth = 12;
-  context.stroke();
-
-  // Number as a small accent, then the title — the kicker line was the part
-  // nobody can read while the vehicle is moving.
-  context.textAlign = "center";
-  context.fillStyle = chapter.c;
-  context.font = "900 56px system-ui";
-  context.letterSpacing = "6px";
-  context.fillText(chapter.n, 600, 150);
-
-  context.fillStyle = "#fff8df";
-  context.letterSpacing = "-3px";
-  // wrapCanvasText drops any word that will not fit inside maxLines, so the
-  // size is stepped down until the whole title survives the wrap.
-  let titleSize = 116;
-  let titleLines = wrapCanvasText(context, chapter.title, 1020, 2);
-  for (; titleSize >= 68; titleSize -= 4) {
-    context.font = `800 ${titleSize}px Georgia`;
-    titleLines = wrapCanvasText(context, chapter.title, 1020, 2);
-    if (titleLines.join(" ") === chapter.title) break;
-  }
-  const lineHeight = titleSize + 2;
-  titleLines.forEach((line, index) => {
-    context.fillText(line, 600, 300 + index * lineHeight - (titleLines.length - 1) * 24);
-  });
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const back = new THREE.Mesh(
-    new THREE.BoxGeometry(7.55, 3.08, 0.18),
-    new THREE.MeshToonMaterial({ color: 0x082c27 }),
+  group.name = `Route letter ${letter}`;
+  const pattern = routeLetterPatterns[letter];
+  const filledCells = pattern.reduce(
+    (total, row) => total + [...row].filter((cell) => cell === "1").length,
+    0,
   );
-  back.position.y = 3.72;
-  back.castShadow = true;
-  group.add(back);
-
-  const face = new THREE.Mesh(
-    new THREE.PlaneGeometry(7.3, 2.82),
-    new THREE.MeshBasicMaterial({ map: texture }),
+  const blockGeometry = new THREE.BoxGeometry(0.42, 0.42, 0.56);
+  const blocks = new THREE.InstancedMesh(
+    blockGeometry,
+    new THREE.MeshToonMaterial({ color }),
+    filledCells,
   );
-  face.position.set(0, 3.72, 0.1);
-  group.add(face);
+  blocks.castShadow = true;
+  blocks.receiveShadow = true;
 
-  const postMaterial = new THREE.MeshToonMaterial({ color: 0xf4e8c7 });
-  [-2.45, 2.45].forEach((x) => {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 4.55, 12), postMaterial);
-    post.position.set(x, 2.08, -0.08);
-    post.castShadow = true;
-    group.add(post);
+  const transform = new THREE.Object3D();
+  let cellIndex = 0;
+  pattern.forEach((row, rowIndex) => {
+    [...row].forEach((cell, columnIndex) => {
+      if (cell !== "1") return;
+      transform.position.set(
+        (columnIndex - 2) * 0.43,
+        (6 - rowIndex) * 0.43 + 0.48,
+        0,
+      );
+      transform.rotation.set(
+        0,
+        ((rowIndex + columnIndex + index) % 3 - 1) * 0.025,
+        ((rowIndex * 2 + columnIndex + index) % 3 - 1) * 0.018,
+      );
+      transform.updateMatrix();
+      blocks.setMatrixAt(cellIndex, transform.matrix);
+      cellIndex += 1;
+    });
   });
+  blocks.instanceMatrix.needsUpdate = true;
+  group.add(blocks);
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(2.7, 0.28, 1.45),
+    new THREE.MeshToonMaterial({ color: 0xf7f1df }),
+  );
+  base.position.y = 0.14;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  group.add(base);
+
+  const inset = new THREE.Mesh(
+    new THREE.BoxGeometry(2.15, 0.08, 1.02),
+    new THREE.MeshToonMaterial({ color: 0x17463e }),
+  );
+  inset.position.y = 0.31;
+  inset.receiveShadow = true;
+  group.add(inset);
 
   return group;
 }
@@ -1083,16 +1064,25 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     let collisionFeedback = 0;
     let collisionSide = 0;
 
-    chapters.forEach((chapter, index) => {
-      const sign = createRoadSign(chapter);
-      const side = index % 2 === 0 ? -1 : 1;
-      addProp(scene, curve, chapter.t, side * 8.6, sign, 0.56);
-      // Aim the readable face at the point from which the vehicle approaches,
-      // rather than inheriting an arbitrary curve-tangent rotation.
-      const approachPoint = curve.getPointAt(Math.max(0.001, chapter.t - 0.045));
-      sign.rotation.y = Math.atan2(
-        approachPoint.x - sign.position.x,
-        approachPoint.z - sign.position.z,
+    // The route itself spells the project name. These are landmarks rather
+    // than duplicate chapter captions; the scroll narrative carries detail.
+    const routeLetterSpecs = [
+      { letter: "D", t: 0.07, offset: 6.2, color: 0xc9ff55 },
+      { letter: "U", t: 0.2, offset: -6.2, color: 0x7de2ff },
+      { letter: "N", t: 0.33, offset: 6.2, color: 0xff8b3d },
+      { letter: "A", t: 0.46, offset: -6.2, color: 0xf8cb54 },
+      { letter: "T", t: 0.58, offset: 6.2, color: 0xff6d8b },
+      { letter: "E", t: 0.7, offset: -6.2, color: 0xc4a8ff },
+      { letter: "R", t: 0.82, offset: 6.2, color: 0x7de2ff },
+      { letter: "P", t: 0.94, offset: -6.2, color: 0xc9ff55 },
+    ];
+    routeLetterSpecs.forEach((spec, index) => {
+      const landmark = createRouteLetter(spec.letter, spec.color, index);
+      addProp(scene, curve, spec.t, spec.offset, landmark, 0.88);
+      const approachPoint = curve.getPointAt(Math.max(0.001, spec.t - 0.035));
+      landmark.rotation.y = Math.atan2(
+        approachPoint.x - landmark.position.x,
+        approachPoint.z - landmark.position.z,
       );
     });
 
