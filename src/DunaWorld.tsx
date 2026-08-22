@@ -1028,21 +1028,26 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       home: THREE.Vector3;
       velocity: THREE.Vector3;
       angular: THREE.Vector3;
+      collidable: boolean;
       hit: boolean;
     }> = [];
     const algaeClusterPoints = [0.13, 0.34, 0.51, 0.68, 0.83];
     let miniIndex = 0;
     algaeClusterPoints.forEach((clusterT, clusterIndex) => {
       for (let itemIndex = 0; itemIndex < 4; itemIndex += 1) {
-        const t = clusterT + (itemIndex - 1.5) * 0.004;
+        const t = clusterT + (itemIndex - 1.5) * 0.006;
         const point = curve.getPointAt(t);
         const tangent = curve.getTangentAt(t).normalize();
         const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
-        // Kept clear of the 1.85-wide half-road: these line the shoulders
-        // instead of standing in the driving line.
+        // Two algae in every cluster sit inside the 1.85-wide half-road and
+        // can be hit. The other two remain on the shoulders as scenery.
+        const collidable = itemIndex < 2;
+        const laneOffsets = [-0.58, 0.62];
         const shoulderSide = itemIndex % 2 === 0 ? -1 : 1;
-        const offset = shoulderSide * (2.95 + Math.floor(itemIndex / 2) * 0.6)
-          + Math.sin((miniIndex + 1) * 3.17) * 0.16;
+        const offset = collidable
+          ? laneOffsets[itemIndex] + Math.sin((miniIndex + 1) * 3.17) * 0.06
+          : shoulderSide * (3.05 + (itemIndex - 2) * 0.48)
+            + Math.sin((miniIndex + 1) * 3.17) * 0.12;
         const object = createMiniDunaliella(miniIndex);
         object.position.copy(point).addScaledVector(side, offset);
         object.position.y = 0.52;
@@ -1054,6 +1059,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
           home: object.position.clone(),
           velocity: new THREE.Vector3(),
           angular: new THREE.Vector3(),
+          collidable,
           hit: false,
         });
         miniIndex += 1;
@@ -1072,17 +1078,37 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     let collisionFeedback = 0;
     let collisionSide = 0;
 
-    const roadSigns: Array<{ t: number; object: THREE.Group }> = [];
+    const roadSigns: Array<{
+      t: number;
+      object: THREE.Group;
+      materials: THREE.Material[];
+      opacity: number;
+    }> = [];
     chapters.forEach((chapter, index) => {
       const sign = createRoadSign(chapter);
       const side = index % 2 === 0 ? -1 : 1;
       addProp(scene, curve, chapter.t, side * 6.8, sign, 0.82);
+      const materials: THREE.Material[] = [];
+      sign.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+        childMaterials.forEach((material) => {
+          material.transparent = true;
+          material.opacity = 0;
+          material.depthWrite = false;
+          materials.push(material);
+        });
+      });
+      sign.visible = false;
       // Orientation is re-aimed at the camera every frame; see the animate loop.
-      roadSigns.push({ t: chapter.t, object: sign });
+      roadSigns.push({ t: chapter.t, object: sign, materials, opacity: 0 });
     });
 
     const scenicFeatures = [
-      { t: 0.055, offset: 13.2, object: createSaltworksOutpost(), scale: 0.68, turn: 0.12 },
+      // The positive side of this opening bend folds back toward the road at
+      // t≈0.16, so the outpost platform used to cover that later segment.
+      // Put it on the outside of the bend where the whole footprint is clear.
+      { t: 0.055, offset: -13.2, object: createSaltworksOutpost(), scale: 0.68, turn: -0.12 },
       { t: 0.16, offset: 13, object: createPhotobioreactorStation(), scale: 0.72, turn: -0.1 },
       { t: 0.345, offset: -12.8, object: createLightArray(), scale: 0.74, turn: 0.12 },
       { t: 0.49, offset: 12.9, object: createWetLabBench(), scale: 0.71, turn: -0.1 },
@@ -1306,17 +1332,16 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         landingRingMaterial.opacity = (1 - landingLife) * 0.82;
       }
 
-      let closestSignIndex = 0;
-      let closestSignDistance = Number.POSITIVE_INFINITY;
-      roadSigns.forEach((sign, index) => {
+      roadSigns.forEach((sign) => {
         const distance = Math.abs(currentProgress - sign.t);
-        if (distance < closestSignDistance) {
-          closestSignDistance = distance;
-          closestSignIndex = index;
-        }
-      });
-      roadSigns.forEach((sign, index) => {
-        sign.object.visible = currentProgress < 0.925 && index === closestSignIndex && closestSignDistance < 0.13;
+        const proximity = 1 - THREE.MathUtils.smoothstep(distance, 0.045, 0.16);
+        const terminalFade = 1 - THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.94);
+        const targetOpacity = proximity * terminalFade;
+        sign.opacity = THREE.MathUtils.damp(sign.opacity, targetOpacity, 7.5, delta);
+        sign.object.visible = sign.opacity > 0.006;
+        sign.materials.forEach((material) => {
+          material.opacity = sign.opacity;
+        });
         if (!sign.object.visible) return;
         // Turn on the vertical axis only, so the sign faces the camera without
         // tipping as the camera rises and falls.
@@ -1342,36 +1367,42 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
           const separation = actor.object.position.clone().sub(vehicleGroundPosition);
           separation.y = 0;
           const collisionDistance = separation.length();
-          if (Math.abs(currentProgress - actor.t) < 0.022 && collisionDistance < 1.55) {
+          if (actor.collidable
+            && Math.abs(currentProgress - actor.t) < 0.022
+            && collisionDistance < 1.35) {
             actor.hit = true;
             const hitSide = Math.sign(separation.dot(side)) || (actorIndex % 2 === 0 ? -1 : 1);
-            const pushDirection = separation.lengthSq() > 0.01
-              ? separation.normalize()
-              : side.clone().multiplyScalar(actorIndex % 2 === 0 ? -1 : 1);
-            const vehicleSpeed = THREE.MathUtils.clamp(Math.abs(progressVelocity) * 7, 0.45, 5.5);
-            const distanceMultiplier = THREE.MathUtils.clamp(
-              (2 - collisionDistance) / 1.5,
-              0,
+            const pushDirection = side.clone().multiplyScalar(hitSide);
+            const forwardSign = Math.sign(progressVelocity) || 1;
+            const speedRatio = THREE.MathUtils.clamp(
+              Math.abs(progressVelocity) / FOLLOW_SPEED,
+              0.35,
               1,
             );
-            const vehicleVelocityPush = tangent
-              .clone()
-              .multiplyScalar(Math.sign(progressVelocity || 1) * vehicleSpeed * 100);
-            const sidewaysPush = pushDirection.clone().multiplyScalar(20);
+            const contactStrength = THREE.MathUtils.clamp(
+              (1.45 - collisionDistance) / 0.9,
+              0.55,
+              1,
+            );
 
             // Folio 2025 Leaves.js force structure, retuned for CPU-driven algae:
-            // (vehicle velocity push + radial push) × speed × distance falloff.
+            // a directional vehicle impulse plus a strong radial impulse. The
+            // radial component is deliberately dominant so the object leaves
+            // the follow-camera's centre line instead of travelling with it.
             actor.velocity
-              .copy(vehicleVelocityPush)
-              .add(sidewaysPush)
-              .multiplyScalar(vehicleSpeed * distanceMultiplier * 0.008)
-              .clampLength(2.4, 7.5);
+              .copy(pushDirection)
+              .multiplyScalar((5.4 + speedRatio * 2.8) * contactStrength)
+              .addScaledVector(
+                tangent,
+                forwardSign * (2.1 + speedRatio * 2.2) * contactStrength,
+              );
+            actor.velocity.y = (5.2 + speedRatio * 2.2) * contactStrength
+              + (actorIndex % 3) * 0.2;
             const planarSpeed = Math.hypot(actor.velocity.x, actor.velocity.z);
-            actor.velocity.y = Math.min(2, planarSpeed) * 1.05 + (actorIndex % 3) * 0.18;
             actor.angular.set(
-              2.8 + planarSpeed * 0.42 + (actorIndex % 3),
-              (actorIndex % 2 === 0 ? -1 : 1) * (3.8 + planarSpeed * 0.55),
-              2.4 + planarSpeed * 0.36 + (actorIndex % 4) * 0.45,
+              5.5 + planarSpeed * 0.65 + (actorIndex % 3),
+              -hitSide * (7.5 + planarSpeed * 0.72),
+              hitSide * (5.2 + planarSpeed * 0.58 + (actorIndex % 4) * 0.4),
             );
 
             collisionFeedback = Math.min(
@@ -1426,8 +1457,8 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
             }
           }
         } else {
-          actor.velocity.y -= 7.8 * delta;
-          const planarDamping = Math.exp(-1.5 * delta);
+          actor.velocity.y -= 11.2 * delta;
+          const planarDamping = Math.exp(-0.72 * delta);
           actor.velocity.x *= planarDamping;
           actor.velocity.z *= planarDamping;
           actor.object.position.addScaledVector(actor.velocity, delta);
@@ -1438,10 +1469,10 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
 
           if (actor.object.position.y < 0.48) {
             actor.object.position.y = 0.48;
-            if (actor.velocity.y < -0.45) actor.velocity.y *= -0.43;
+            if (actor.velocity.y < -0.75) actor.velocity.y *= -0.34;
             else actor.velocity.y = 0;
-            actor.velocity.x *= 0.74;
-            actor.velocity.z *= 0.74;
+            actor.velocity.x *= 0.68;
+            actor.velocity.z *= 0.68;
           }
         }
       });
