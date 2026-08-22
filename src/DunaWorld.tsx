@@ -269,20 +269,45 @@ function createRouteLetter(letter: string, color: number, index: number) {
   blocks.instanceMatrix.needsUpdate = true;
   group.add(blocks);
 
+  return group;
+}
+
+function createRouteWordmark() {
+  const group = new THREE.Group();
+  group.name = "DUNATERP starting wordmark";
+  const letters = [..."DUNATERP"];
+  const colors = [
+    0xc9ff55,
+    0x7de2ff,
+    0xff8b3d,
+    0xf8cb54,
+    0xff6d8b,
+    0xc4a8ff,
+    0x7de2ff,
+    0xc9ff55,
+  ];
+
+  letters.forEach((letter, index) => {
+    const glyph = createRouteLetter(letter, colors[index], index);
+    glyph.scale.setScalar(0.28);
+    glyph.position.set((index - (letters.length - 1) / 2) * 0.7, 0.11, 0);
+    group.add(glyph);
+  });
+
   const base = new THREE.Mesh(
-    new THREE.BoxGeometry(2.7, 0.28, 1.45),
+    new THREE.BoxGeometry(5.75, 0.18, 0.92),
     new THREE.MeshToonMaterial({ color: 0xf7f1df }),
   );
-  base.position.y = 0.14;
+  base.position.y = 0.09;
   base.castShadow = true;
   base.receiveShadow = true;
   group.add(base);
 
   const inset = new THREE.Mesh(
-    new THREE.BoxGeometry(2.15, 0.08, 1.02),
+    new THREE.BoxGeometry(5.35, 0.055, 0.64),
     new THREE.MeshToonMaterial({ color: 0x17463e }),
   );
-  inset.position.y = 0.31;
+  inset.position.y = 0.205;
   inset.receiveShadow = true;
   group.add(inset);
 
@@ -1069,27 +1094,16 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     let collisionFeedback = 0;
     let collisionSide = 0;
 
-    // The route itself spells the project name. These are landmarks rather
-    // than duplicate chapter captions; the scroll narrative carries detail.
-    const routeLetterSpecs = [
-      { letter: "D", t: 0.07, offset: 6.2, color: 0xc9ff55 },
-      { letter: "U", t: 0.2, offset: -6.2, color: 0x7de2ff },
-      { letter: "N", t: 0.33, offset: 6.2, color: 0xff8b3d },
-      { letter: "A", t: 0.46, offset: -6.2, color: 0xf8cb54 },
-      { letter: "T", t: 0.58, offset: 6.2, color: 0xff6d8b },
-      { letter: "E", t: 0.7, offset: -6.2, color: 0xc4a8ff },
-      { letter: "R", t: 0.82, offset: 6.2, color: 0x7de2ff },
-      { letter: "P", t: 0.94, offset: -6.2, color: 0xc9ff55 },
-    ];
-    routeLetterSpecs.forEach((spec, index) => {
-      const landmark = createRouteLetter(spec.letter, spec.color, index);
-      addProp(scene, curve, spec.t, spec.offset, landmark, 0.88);
-      const approachPoint = curve.getPointAt(Math.max(0.001, spec.t - 0.035));
-      landmark.rotation.y = Math.atan2(
-        approachPoint.x - landmark.position.x,
-        approachPoint.z - landmark.position.z,
-      );
-    });
+    // A small Folio-style wordmark establishes the project at the start. It
+    // sits fully outside the tarmac and does not repeat along the route.
+    const startWordmark = createRouteWordmark();
+    const wordmarkT = 0.038;
+    addProp(scene, curve, wordmarkT, -5.8, startWordmark, 0.92);
+    const wordmarkApproach = curve.getPointAt(0.001);
+    startWordmark.rotation.y = Math.atan2(
+      wordmarkApproach.x - startWordmark.position.x,
+      wordmarkApproach.z - startWordmark.position.z,
+    );
 
     const scenicFeatures = [
       { t: 0.16, offset: 13, object: createPhotobioreactorStation(), scale: 0.72, turn: -0.1 },
