@@ -810,7 +810,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     if (typeof window === "undefined") return false;
     try {
       return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        || window.sessionStorage.getItem("dunaterp-opening-v2") === "seen";
+        || window.sessionStorage.getItem("dunaterp-opening-v3") === "seen";
     } catch {
       return false;
     }
@@ -823,7 +823,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     openingCompleteRef.current = true;
     driveStartedAt.current = performance.now();
     try {
-      window.sessionStorage.setItem("dunaterp-opening-v2", "seen");
+      window.sessionStorage.setItem("dunaterp-opening-v3", "seen");
     } catch {
       // The opening still works when session storage is unavailable.
     }
@@ -1576,9 +1576,9 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
             <i className="duna-opening-flagellum duna-opening-flagellum--left" />
             <i className="duna-opening-flagellum duna-opening-flagellum--right" />
           </div>
-          <p className="duna-opening-word duna-opening-word--one">Adapt to salt.</p>
-          <p className="duna-opening-word duna-opening-word--two">Read the light.</p>
-          <p className="duna-opening-word duna-opening-word--three">Redirect carbon.</p>
+          <p className="duna-opening-word duna-opening-word--one">One salt-adapted cell.</p>
+          <p className="duna-opening-word duna-opening-word--two">One shared β-carotene hub.</p>
+          <p className="duna-opening-word duna-opening-word--three">Four routes into color.</p>
           <p className="duna-opening-signature">DUNATERP · FROM SALT TO CAROTENOIDS</p>
           <button type="button" className="duna-opening-skip" onClick={finishOpening}>Skip</button>
         </div>

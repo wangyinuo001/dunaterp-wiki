@@ -708,7 +708,7 @@
   .duna-opening-word{
     top:59%;
     width:calc(100vw - 2rem);
-    font-size:clamp(2rem,9vw,3.35rem);
+    font-size:clamp(1.35rem,6.8vw,2.6rem);
   }
   .duna-opening-signature{
     bottom:1.5rem;
