@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -825,6 +826,41 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
   const [started, setStarted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [quality, setQuality] = useState<"webgl" | "fallback">("webgl");
+  const [openingComplete, setOpeningComplete] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        || window.sessionStorage.getItem("dunaterp-opening-v1") === "seen";
+    } catch {
+      return false;
+    }
+  });
+  const openingCompleteRef = useRef(openingComplete);
+  const driveStartedAt = useRef<number | null>(null);
+
+  const finishOpening = useCallback(() => {
+    if (openingCompleteRef.current) return;
+    openingCompleteRef.current = true;
+    driveStartedAt.current = performance.now();
+    try {
+      window.sessionStorage.setItem("dunaterp-opening-v1", "seen");
+    } catch {
+      // The opening still works when session storage is unavailable.
+    }
+    setOpeningComplete(true);
+  }, []);
+
+  useEffect(() => {
+    if (openingCompleteRef.current && driveStartedAt.current === null) {
+      driveStartedAt.current = performance.now();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (openingCompleteRef.current) return;
+    const timeout = window.setTimeout(finishOpening, 2200);
+    return () => window.clearTimeout(timeout);
+  }, [finishOpening]);
 
   useEffect(() => {
     if (!mount.current || !journey.current) return;
@@ -992,7 +1028,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const miniAlgae: Array<{
       object: THREE.Group;
       home: THREE.Vector3;
-      collidable: boolean;
     }> = [];
     const algaeClusterPoints = [0.13, 0.34, 0.51, 0.68, 0.83];
     let miniIndex = 0;
@@ -1002,15 +1037,11 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         const point = curve.getPointAt(t);
         const tangent = curve.getTangentAt(t).normalize();
         const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
-        // Two algae in every cluster sit inside the 1.85-wide half-road and
-        // can be hit. The other two remain on the shoulders as scenery.
-        const collidable = itemIndex < 2;
-        const laneOffsets = [-0.58, 0.62];
-        const shoulderSide = itemIndex % 2 === 0 ? -1 : 1;
-        const offset = collidable
-          ? laneOffsets[itemIndex] + Math.sin((miniIndex + 1) * 3.17) * 0.06
-          : shoulderSide * (3.05 + (itemIndex - 2) * 0.48)
-            + Math.sin((miniIndex + 1) * 3.17) * 0.12;
+        // Every roadside mini cell now occupies the driveable strip and is
+        // registered with Rapier below, so collision behaviour is consistent.
+        const laneOffsets = [-1.16, -0.38, 0.4, 1.14];
+        const offset = laneOffsets[itemIndex]
+          + Math.sin((miniIndex + 1) * 3.17) * 0.05;
         const object = createMiniDunaliella(miniIndex);
         object.position.copy(point).addScaledVector(side, offset);
         object.position.y = 0.52;
@@ -1019,7 +1050,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         miniAlgae.push({
           object,
           home: object.position.clone(),
-          collidable,
         });
         miniIndex += 1;
       }
@@ -1032,9 +1062,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     void RoutePhysics.create(
       physicsStart,
       Math.atan2(physicsStartTangent.x, physicsStartTangent.z),
-      miniAlgae
-        .filter((actor) => actor.collidable)
-        .map((actor) => ({ object: actor.object, home: actor.home })),
+      miniAlgae.map((actor) => ({ object: actor.object, home: actor.home })),
     ).then((physics) => {
       if (physicsCancelled) physics.dispose();
       else routePhysics = physics;
@@ -1058,9 +1086,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     chapters.forEach((chapter, index) => {
       const sign = createRoadSign(chapter);
       const side = index % 2 === 0 ? -1 : 1;
-      addProp(scene, curve, chapter.t, side * 10.2, sign, 0.58);
-      const signTangent = curve.getTangentAt(chapter.t).normalize();
-      sign.rotation.y = Math.atan2(signTangent.x, signTangent.z) + Math.PI;
+      addProp(scene, curve, chapter.t, side * 8.6, sign, 0.56);
+      // Aim the readable face at the point from which the vehicle approaches,
+      // rather than inheriting an arbitrary curve-tangent rotation.
+      const approachPoint = curve.getPointAt(Math.max(0.001, chapter.t - 0.045));
+      sign.rotation.y = Math.atan2(
+        approachPoint.x - sign.position.x,
+        approachPoint.z - sign.position.z,
+      );
     });
 
     const scenicFeatures = [
@@ -1272,7 +1305,10 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       vehicleGroundPosition.copy(point).addScaledVector(side, routeSway);
       vehicle.position.copy(vehicleGroundPosition);
 
-      const introTime = clock.elapsedTime;
+      const driveStart = driveStartedAt.current;
+      const introTime = driveStart === null
+        ? 0
+        : Math.max(0, (performance.now() - driveStart) / 1000);
       let dropHeight = 0;
       if (introTime < 0.78) {
         const dropProgress = introTime / 0.78;
@@ -1310,14 +1346,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         );
         physicsImpacts = routePhysics.step(delta);
       }
-
-      // Shoulder algae remain ambient scenery. Road algae are synchronised
-      // from Rapier by RoutePhysics after each physics step.
-      miniAlgae.forEach((actor, actorIndex) => {
-        if (actor.collidable && routePhysics) return;
-        actor.object.position.y = actor.home.y + Math.sin(introTime * 2.4 + actorIndex * 0.83) * 0.055;
-        actor.object.rotation.y += delta * (0.35 + (actorIndex % 3) * 0.12);
-      });
 
       physicsImpacts.forEach((impact) => {
         const actorIndex = miniAlgaeIndexes.get(impact.actor.object) ?? 0;
@@ -1520,23 +1548,49 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
   return (
     <main
       ref={journey}
-      className={`duna-world${started || progress > 0.025 ? " is-started" : ""}${progress > 0.9 ? " is-arriving" : ""}${progress > 0.982 ? " is-panel-ready" : ""}`}
+      className={`duna-world${openingComplete ? " is-opening-complete" : ""}${started || progress > 0.025 ? " is-started" : ""}${progress > 0.9 ? " is-arriving" : ""}${progress > 0.982 ? " is-panel-ready" : ""}`}
       style={journeyStyle}
     >
+      {!openingComplete && (
+        <div className="duna-opening" role="status" aria-label="DunaTerp opening sequence">
+          <div className="duna-opening-mark" aria-hidden="true">
+            <span className="duna-opening-chloroplast" />
+            <span className="duna-opening-pyrenoid" />
+            <span className="duna-opening-eyespot" />
+            <i className="duna-opening-flagellum duna-opening-flagellum--left" />
+            <i className="duna-opening-flagellum duna-opening-flagellum--right" />
+          </div>
+          <p className="duna-opening-word duna-opening-word--one">Salt.</p>
+          <p className="duna-opening-word duna-opening-word--two">Light.</p>
+          <p className="duna-opening-word duna-opening-word--three">Color.</p>
+          <p className="duna-opening-signature">DUNATERP · FROM SALT TO CAROTENOIDS</p>
+          <button type="button" className="duna-opening-skip" onClick={finishOpening}>Skip</button>
+        </div>
+      )}
+
       <Header light />
 
       <div className="duna-sticky">
         <div ref={mount} className="duna-stage" aria-label="A scroll-driven 3D journey through the DunaTerp project" />
 
         <section className="world-intro">
+          <div className="intro-coordinate" aria-hidden="true">
+            <span>SCU–CHINA / CHENGDU</span>
+            <span>iGEM 2026 / DUNATERP</span>
+          </div>
           <div className="intro-lockup">
-            <p>SCU–CHINA · iGEM 2026</p>
-            <h1>Duna<i>Terp.</i></h1>
-            <p>From a salt-born cell to four carotenoid routes.</p>
+            <p><span /> DUNALIELLA · SYNTHETIC BIOLOGY</p>
+            <h1><span>Duna</span><i>Terp.</i></h1>
+            <p>One salt-adapted cell. One shared metabolic hub. Four routes into color.</p>
+          </div>
+          <div className="intro-data" aria-label="Project overview">
+            <div><strong>01</strong><span>Halophilic chassis</span></div>
+            <div><strong>04</strong><span>Product routes</span></div>
+            <div><strong>β-C</strong><span>Shared hub</span></div>
           </div>
           <div className="intro-start">
-            <button type="button" onClick={beginJourney}>Start the route <span>↓</span></button>
-            <span>Scroll · trackpad · swipe</span>
+            <button type="button" onClick={beginJourney}>Enter the salt route <span>↓</span></button>
+            <span>Scroll to drive</span>
           </div>
         </section>
 
