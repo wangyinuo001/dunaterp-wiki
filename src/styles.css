@@ -55,7 +55,7 @@
   background:#052f2a;
   color:#fff8df;
   isolation:isolate;
-  animation:dunaOpeningExit .48s cubic-bezier(.76,0,.24,1) 1.72s both;
+  animation:dunaOpeningExit .65s cubic-bezier(.76,0,.24,1) 3.6s both;
 }
 .duna-opening::before{
   content:"";
@@ -66,7 +66,7 @@
     radial-gradient(circle at 50% 44%,rgba(202,255,97,.16),transparent 20%),
     radial-gradient(circle at 16% 14%,rgba(103,218,232,.1),transparent 28%),
     linear-gradient(132deg,transparent 47%,rgba(255,248,223,.045) 47.2% 47.6%,transparent 47.8%);
-  animation:dunaOpeningField 1.72s ease-out both;
+  animation:dunaOpeningField 3.6s ease-out both;
 }
 .duna-opening-mark{
   position:absolute;
@@ -79,7 +79,7 @@
   background:rgba(174,243,120,.12);
   box-shadow:inset 0 0 2.5rem rgba(202,255,97,.09),0 0 4rem rgba(202,255,97,.08);
   transform:translate(-50%,-62%) scale(.42) rotate(-18deg);
-  animation:dunaOpeningCell 1.72s cubic-bezier(.2,.75,.24,1) both;
+  animation:dunaOpeningCell 3.6s cubic-bezier(.2,.75,.24,1) both;
 }
 .duna-opening-chloroplast{
   position:absolute;
@@ -129,15 +129,18 @@
   left:50%;
   top:61%;
   margin:0;
-  font:500 clamp(3.5rem,8vw,7.2rem)/.8 Georgia,"Times New Roman",serif;
+  width:min(92vw,18ch);
+  text-align:center;
+  white-space:nowrap;
+  font:500 clamp(2.8rem,6vw,5.8rem)/.86 Georgia,"Times New Roman",serif;
   letter-spacing:-.07em;
   opacity:0;
   transform:translate(-50%,1.2rem);
   filter:blur(.7rem);
 }
-.duna-opening-word--one{animation:dunaOpeningWord .62s cubic-bezier(.22,.7,.2,1) .08s both}
-.duna-opening-word--two{animation:dunaOpeningWord .62s cubic-bezier(.22,.7,.2,1) .58s both}
-.duna-opening-word--three{animation:dunaOpeningWord .62s cubic-bezier(.22,.7,.2,1) 1.08s both}
+.duna-opening-word--one{animation:dunaOpeningWord 1.18s cubic-bezier(.22,.7,.2,1) .12s both}
+.duna-opening-word--two{animation:dunaOpeningWord 1.18s cubic-bezier(.22,.7,.2,1) 1.27s both}
+.duna-opening-word--three{animation:dunaOpeningWord 1.18s cubic-bezier(.22,.7,.2,1) 2.42s both}
 .duna-opening-signature{
   position:absolute;
   left:50%;
@@ -166,7 +169,7 @@
 }
 @keyframes dunaOpeningWord{
   0%{opacity:0;transform:translate(-50%,1.2rem);filter:blur(.7rem)}
-  24%,70%{opacity:1;transform:translate(-50%,0);filter:blur(0)}
+  18%,82%{opacity:1;transform:translate(-50%,0);filter:blur(0)}
   100%{opacity:0;transform:translate(-50%,-1.2rem);filter:blur(.7rem)}
 }
 @keyframes dunaOpeningCell{
@@ -702,7 +705,8 @@
   }
   .duna-opening-word{
     top:59%;
-    font-size:clamp(3.5rem,18vw,5.4rem);
+    width:calc(100vw - 2rem);
+    font-size:clamp(2rem,9vw,3.35rem);
   }
   .duna-opening-signature{
     bottom:1.5rem;
