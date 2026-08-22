@@ -254,16 +254,28 @@ function createRoadSign(chapter: (typeof chapters)[number]) {
   context.lineWidth = 12;
   context.stroke();
 
+  // Number as a small accent, then the title — the kicker line was the part
+  // nobody can read while the vehicle is moving.
+  context.textAlign = "center";
   context.fillStyle = chapter.c;
-  context.font = "900 40px system-ui";
-  context.letterSpacing = "5px";
-  context.fillText(`${chapter.n}  ${chapter.kicker}`, 72, 102);
+  context.font = "900 56px system-ui";
+  context.letterSpacing = "6px";
+  context.fillText(chapter.n, 600, 150);
 
   context.fillStyle = "#fff8df";
-  context.font = "800 104px Georgia";
   context.letterSpacing = "-3px";
-  wrapCanvasText(context, chapter.title, 1020, 2).forEach((line, index) => {
-    context.fillText(line, 72, 252 + index * 108);
+  // wrapCanvasText drops any word that will not fit inside maxLines, so the
+  // size is stepped down until the whole title survives the wrap.
+  let titleSize = 116;
+  let titleLines = wrapCanvasText(context, chapter.title, 1020, 2);
+  for (; titleSize >= 68; titleSize -= 4) {
+    context.font = `800 ${titleSize}px Georgia`;
+    titleLines = wrapCanvasText(context, chapter.title, 1020, 2);
+    if (titleLines.join(" ") === chapter.title) break;
+  }
+  const lineHeight = titleSize + 2;
+  titleLines.forEach((line, index) => {
+    context.fillText(line, 600, 300 + index * lineHeight - (titleLines.length - 1) * 24);
   });
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -931,6 +943,22 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     road.receiveShadow = true;
     scene.add(road);
 
+    // Props are scattered on a grid, but the route sweeps from x=-18 to x=20,
+    // so a grid cell can land on the tarmac. Measure against the route itself
+    // rather than against a fixed corridor.
+    const roadSamples = curve.getSpacedPoints(240);
+    const distanceToRoad = (x: number, z: number) => {
+      let nearest = Number.POSITIVE_INFINITY;
+      for (const sample of roadSamples) {
+        const dx = sample.x - x;
+        const dz = sample.z - z;
+        const squared = dx * dx + dz * dz;
+        if (squared < nearest) nearest = squared;
+      }
+      return Math.sqrt(nearest);
+    };
+    const ROAD_CLEARANCE = 3.6;
+
     const dashMaterial = new THREE.MeshToonMaterial({ color: 0xf5da61 });
     for (let i = 2; i < 130; i += 4) {
       const t = i / 132;
@@ -960,12 +988,12 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     });
 
     const saltMaterial = new THREE.MeshToonMaterial({ color: 0xfff8df });
-    for (let i = 0; i < 65; i += 1) {
+    for (let i = 0; i < 44; i += 1) {
       const radius = 0.45 + (i % 5) * 0.17;
-      const crystal = new THREE.Mesh(new THREE.DodecahedronGeometry(radius, 0), saltMaterial);
       const x = ((i * 37) % 93) - 46;
       const z = ((i * 61) % 97) - 48;
-      if (Math.abs(x) < 3 && Math.abs(z) < 42) continue;
+      if (distanceToRoad(x, z) < ROAD_CLEARANCE + radius) continue;
+      const crystal = new THREE.Mesh(new THREE.DodecahedronGeometry(radius, 0), saltMaterial);
       crystal.scale.y = 0.22;
       crystal.position.set(x, 0.1, z);
       crystal.rotation.y = i * 0.71;
@@ -1010,7 +1038,11 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
         const point = curve.getPointAt(t);
         const tangent = curve.getTangentAt(t).normalize();
         const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
-        const offset = (itemIndex - 1.5) * 0.72 + Math.sin((miniIndex + 1) * 3.17) * 0.16;
+        // Kept clear of the 1.85-wide half-road: these line the shoulders
+        // instead of standing in the driving line.
+        const shoulderSide = itemIndex % 2 === 0 ? -1 : 1;
+        const offset = shoulderSide * (2.95 + Math.floor(itemIndex / 2) * 0.6)
+          + Math.sin((miniIndex + 1) * 3.17) * 0.16;
         const object = createMiniDunaliella(miniIndex);
         object.position.copy(point).addScaledVector(side, offset);
         object.position.y = 0.52;
@@ -1045,8 +1077,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       const sign = createRoadSign(chapter);
       const side = index % 2 === 0 ? -1 : 1;
       addProp(scene, curve, chapter.t, side * 6.8, sign, 0.82);
-      const signTangent = curve.getTangentAt(chapter.t).normalize();
-      sign.rotation.y = Math.atan2(signTangent.x, signTangent.z) + Math.PI;
+      // Orientation is re-aimed at the camera every frame; see the animate loop.
       roadSigns.push({ t: chapter.t, object: sign });
     });
 
@@ -1177,6 +1208,8 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     terminal.rotation.y = Math.atan2(terminalTangent.x, terminalTangent.z) + Math.PI;
     addProp(scene, curve, 0.985, 0, terminal, 1);
 
+    // Route fraction covered per second while catching up to the scroll target.
+    const FOLLOW_SPEED = 0.5;
     let targetProgress = 0.001;
     let currentProgress = 0.001;
     let previousProgress = currentProgress;
@@ -1187,6 +1220,7 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     const travelTarget = new THREE.Vector3();
     const travelCamera = new THREE.Vector3();
     const cameraImpactOffset = new THREE.Vector3();
+    const signWorldPosition = new THREE.Vector3();
     const vehicleGroundPosition = new THREE.Vector3();
     const terminalTarget = terminal.position.clone().add(new THREE.Vector3(0, 3.35, 0));
     const terminalCamera = terminal.position
@@ -1231,7 +1265,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       if (disposed) return;
       requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.04);
-      currentProgress = THREE.MathUtils.damp(currentProgress, targetProgress, 7, delta);
+      // Constant rate rather than exponential damping: damp() covers most of
+      // the gap immediately and then crawls, which reads as uneven speed.
+      const remaining = targetProgress - currentProgress;
+      currentProgress += THREE.MathUtils.clamp(
+        remaining,
+        -FOLLOW_SPEED * delta,
+        FOLLOW_SPEED * delta,
+      );
       const progressVelocity = (currentProgress - previousProgress) / Math.max(delta, 0.001);
       previousProgress = currentProgress;
 
@@ -1276,6 +1317,14 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       });
       roadSigns.forEach((sign, index) => {
         sign.object.visible = currentProgress < 0.925 && index === closestSignIndex && closestSignDistance < 0.13;
+        if (!sign.object.visible) return;
+        // Turn on the vertical axis only, so the sign faces the camera without
+        // tipping as the camera rises and falls.
+        sign.object.getWorldPosition(signWorldPosition);
+        sign.object.rotation.y = Math.atan2(
+          camera.position.x - signWorldPosition.x,
+          camera.position.z - signWorldPosition.z,
+        );
       });
 
       miniAlgae.forEach((actor, actorIndex) => {
