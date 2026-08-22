@@ -1044,35 +1044,18 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
     let collisionFeedback = 0;
     let collisionSide = 0;
 
-    const roadSigns: Array<{
-      t: number;
-      object: THREE.Group;
-      materials: THREE.Material[];
-      opacity: number;
-    }> = [];
+    const roadSigns: Array<{ object: THREE.Group }> = [];
     chapters.forEach((chapter, index) => {
       const sign = createRoadSign(chapter);
       const side = index % 2 === 0 ? -1 : 1;
       addProp(scene, curve, chapter.t, side * 6.8, sign, 0.82);
-      const materials: THREE.Material[] = [];
-      sign.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return;
-        const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
-        childMaterials.forEach((material) => {
-          material.transparent = true;
-          material.opacity = 0;
-          material.depthWrite = false;
-          materials.push(material);
-        });
-      });
-      sign.visible = false;
       // Orientation is re-aimed at the camera every frame; see the animate loop.
-      roadSigns.push({ t: chapter.t, object: sign, materials, opacity: 0 });
+      roadSigns.push({ object: sign });
     });
 
     const scenicFeatures = [
       { t: 0.16, offset: 13, object: createPhotobioreactorStation(), scale: 0.72, turn: -0.1 },
-      { t: 0.345, offset: -12.8, object: createLightArray(), scale: 0.74, turn: 0.12 },
+      { t: 0.345, offset: 13.8, object: createLightArray(), scale: 0.74, turn: -0.12 },
       { t: 0.49, offset: 12.9, object: createWetLabBench(), scale: 0.71, turn: -0.1 },
       { t: 0.665, offset: -13.1, object: createCarotenoidHub(), scale: 0.74, turn: 0.12 },
       { t: 0.815, offset: -13, object: createProductDepot(), scale: 0.76, turn: -0.1 },
@@ -1295,16 +1278,6 @@ export function DunaWorld({ Header }: { Header: ComponentType<HeaderProps> }) {
       }
 
       roadSigns.forEach((sign) => {
-        const distance = Math.abs(currentProgress - sign.t);
-        const proximity = 1 - THREE.MathUtils.smoothstep(distance, 0.045, 0.16);
-        const terminalFade = 1 - THREE.MathUtils.smoothstep(currentProgress, 0.9, 0.94);
-        const targetOpacity = proximity * terminalFade;
-        sign.opacity = THREE.MathUtils.damp(sign.opacity, targetOpacity, 7.5, delta);
-        sign.object.visible = sign.opacity > 0.006;
-        sign.materials.forEach((material) => {
-          material.opacity = sign.opacity;
-        });
-        if (!sign.object.visible) return;
         // Turn on the vertical axis only, so the sign faces the camera without
         // tipping as the camera rises and falls.
         sign.object.getWorldPosition(signWorldPosition);
